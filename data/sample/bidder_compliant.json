@@ -1,0 +1,71 @@
+{
+  "_notice": "SYNTHETIC BENCHMARK DATASET - FOR SIH26100 TEST & DEMO ONLY. NOT REAL GOVERNMENT RECORDS.",
+  "bidder_id": "BDR-COMPLIANT-001",
+  "bidder_name": "Zenith Cloud Solutions Private Limited",
+  "pan": "AAACZ1234K",
+  "gstin": "07AAACZ1234K1Z2",
+  "udyam": "UDYAM-DL-01-0044123",
+  "submission_summary": {
+    "total_documents": 3,
+    "documents": [
+      "zenith_technical_proposal.pdf",
+      "audited_ca_turnover_certificate.pdf",
+      "past_performance_completion_certificates.pdf"
+    ]
+  },
+  "compliance_evaluations": [
+    {
+      "requirement_id": "REQ-001",
+      "requirement": "Bidder must have average annual turnover of at least INR 5.0 crore during the last 3 financial years.",
+      "requirement_type": "financial",
+      "evidence": [
+        {
+          "text": "The average annual turnover of M/s Zenith Cloud Solutions for FY 2021-22, 2022-23, and 2023-24 is INR 8.45 crore as certified by statutory auditors.",
+          "document": "audited_ca_turnover_certificate.pdf",
+          "page": 2
+        }
+      ],
+      "status": "PASS",
+      "confidence": 0.98,
+      "reason": "Turnover of INR 8.45 crore exceeds the mandatory threshold of INR 5.0 crore.",
+      "requires_human_review": false,
+      "contradiction_detected": false
+    },
+    {
+      "requirement_id": "REQ-002",
+      "requirement": "Bidder must have successfully completed at least 3 similar contracts for government or public sector clients.",
+      "requirement_type": "experience",
+      "evidence": [
+        {
+          "text": "Completed Project A (NIC Cloud, ₹2.1 Cr, 2022), Project B (RailTel Data Infra, ₹3.4 Cr, 2023), and Project C (BSNL Network, ₹1.9 Cr, 2024).",
+          "document": "past_performance_completion_certificates.pdf",
+          "page": 4
+        }
+      ],
+      "status": "PASS",
+      "confidence": 0.95,
+      "reason": "Satisfies the 3 similar contract requirement with official completion certificates.",
+      "requires_human_review": false,
+      "contradiction_detected": false
+    },
+    {
+      "requirement_id": "REQ-003",
+      "requirement": "Bidder must not be under active debarment or blacklisting order by any Central/State Ministry.",
+      "requirement_type": "legal",
+      "evidence": [
+        {
+          "text": "Solemn declaration on non-judicial stamp paper confirming no debarment orders in force.",
+          "document": "zenith_technical_proposal.pdf",
+          "page": 12
+        }
+      ],
+      "status": "PASS",
+      "confidence": 1.0,
+      "reason": "Verified against Central Debarment Registry: No active debarment found.",
+      "requires_human_review": false,
+      "contradiction_detected": false
+    }
+  ],
+  "overall_score": 96.5,
+  "final_recommendation": "QUALIFIED_FOR_COMMERCIAL_OPENING"
+}

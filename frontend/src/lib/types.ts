@@ -419,3 +419,144 @@ export interface StatutoryAdapterInfo {
   mode: SourceMode;
   disclaimer: string;
 }
+
+// ==========================================
+// Phase 8.4 Verification Intelligence Types
+// ==========================================
+
+export type RiskReasonCode =
+  | "ACTIVE_DEBARMENT"
+  | "MAJOR_CONTRADICTION"
+  | "IDENTITY_CONFLICT"
+  | "INSUFFICIENT_EVIDENCE"
+  | "SOURCE_UNAVAILABLE"
+  | "SOURCE_TIMEOUT"
+  | "SOURCE_AUTH_FAILURE"
+  | "SOURCE_FAILED"
+  | "TEMPORAL_UNVERIFIED"
+  | "OCR_LOW_CONFIDENCE"
+  | "MANDATORY_CLAUSE_FAIL"
+  | "RECOMMENDATION_REVIEW";
+
+export type RiskReasonSeverity = "HIGH" | "REVIEW" | "INFO";
+
+export interface RiskReasonItem {
+  reason_code: RiskReasonCode;
+  severity: RiskReasonSeverity;
+  title: string;
+  explanation: string;
+  source_type: string;
+  source_name: string;
+  verification_id?: string | null;
+  clause_code?: string | null;
+  evidence_reference?: string | null;
+  requires_officer_review: boolean;
+  detected_at?: string;
+}
+
+export interface SourceStatusItem {
+  authority: string;
+  source_name: string;
+  connection_status: string;
+  verification_status: string;
+  is_technical_failure: boolean;
+  is_business_not_found: boolean;
+  retrieved_at?: string | null;
+  as_of_date?: string | null;
+  query_identifier?: string | null;
+  identifier_type?: string | null;
+  validity_start?: string | null;
+  validity_end?: string | null;
+  provenance_note: string;
+  verification_id?: string | null;
+  error_message?: string | null;
+  is_mock: boolean;
+  previous_successful_result?: Record<string, any> | null;
+}
+
+export interface DebarmentStateSummary {
+  is_debarred: boolean;
+  temporal_status: string;
+  order_number?: string | null;
+  authority?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  as_of_date?: string | null;
+  reason?: string | null;
+  verification_id?: string | null;
+  provenance_note: string;
+}
+
+export interface OfficerBidderVerificationSummary {
+  bidder_id: string;
+  tender_id: string;
+  company_name: string;
+  overall_risk_state: "LOW" | "MEDIUM" | "HIGH";
+  base_compliance_score: number;
+  score_breakdown: {
+    tender_compliance: number;
+    statutory_consistency: number;
+    evidence_completeness: number;
+    contradiction_score: number;
+  };
+  debarment_state: DebarmentStateSummary;
+  source_statuses: Record<string, SourceStatusItem>;
+  major_contradictions: string[];
+  identity_conflicts: string[];
+  missing_or_insufficient_evidence: string[];
+  technical_source_failures: string[];
+  officer_review_required: boolean;
+  risk_reasons: RiskReasonItem[];
+  evaluated_at: string;
+  as_of_date?: string | null;
+  disclaimer: string;
+}
+
+export interface VerificationHistoryItem {
+  id: string;
+  verification_id: string;
+  authority: string;
+  source_name: string;
+  query_identifier: string;
+  identifier_type: string;
+  connection_status: string;
+  verification_status: string;
+  is_latest: boolean;
+  retrieved_at: string;
+  as_of_date?: string | null;
+  data_payload: Record<string, any>;
+  confidence_score: number;
+  provenance_note: string;
+  error_message?: string | null;
+  execution_time_ms: number;
+}
+
+export interface VerificationHistoryResponse {
+  bidder_id: string;
+  tender_id: string;
+  total_attempts: number;
+  history: VerificationHistoryItem[];
+  disclaimer: string;
+}
+
+export interface ReviewQueueItem {
+  bidder_id: string;
+  tender_id: string;
+  company_name: string;
+  overall_risk_state: "LOW" | "MEDIUM" | "HIGH";
+  compliance_score: number;
+  review_triggers: string[];
+  primary_risk_reasons: RiskReasonItem[];
+  debarred: boolean;
+  contradiction_count: number;
+  technical_failure_count: number;
+  queued_at: string;
+}
+
+export interface OfficerReviewQueueResponse {
+  tender_id: string;
+  total_queued: number;
+  items: ReviewQueueItem[];
+  generated_at: string;
+  disclaimer: string;
+}

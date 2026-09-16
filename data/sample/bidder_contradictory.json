@@ -1,0 +1,41 @@
+{
+  "_notice": "SYNTHETIC BENCHMARK DATASET - FOR SIH26100 TEST & DEMO ONLY. NOT REAL GOVERNMENT RECORDS.",
+  "bidder_id": "BDR-CONTRADICTORY-003",
+  "bidder_name": "Nova Systems & Technologies Private Limited",
+  "pan": "AAACN4321P",
+  "gstin": "27AAACN4321P1ZA",
+  "udyam": "UDYAM-MH-12-0055443",
+  "submission_summary": {
+    "total_documents": 2,
+    "documents": [
+      "nova_technical_overview.pdf",
+      "certificate_of_incorporation.pdf"
+    ]
+  },
+  "compliance_evaluations": [
+    {
+      "requirement_id": "REQ-002",
+      "requirement": "Bidder must possess minimum 5 years continuous operational experience in enterprise software.",
+      "requirement_type": "experience",
+      "evidence": [
+        {
+          "text": "Nova Systems possesses over 6 years of proven industry experience delivering mission-critical enterprise systems.",
+          "document": "nova_technical_overview.pdf",
+          "page": 2
+        },
+        {
+          "text": "Certificate of Incorporation issued under the Companies Act 2013 on 18th July 2023.",
+          "document": "certificate_of_incorporation.pdf",
+          "page": 1
+        }
+      ],
+      "status": "REVIEW",
+      "confidence": 0.88,
+      "reason": "Conflicting evidence detected: Document A (nova_technical_overview.pdf) claims 6 years operating experience, whereas Document B (certificate_of_incorporation.pdf) establishes legal incorporation date in July 2023 (less than 3 years active).",
+      "requires_human_review": true,
+      "contradiction_detected": true
+    }
+  ],
+  "overall_score": 62.0,
+  "final_recommendation": "FLAGGED_FOR_OFFICER_REVIEW_CONTRADICTORY_EVIDENCE"
+}

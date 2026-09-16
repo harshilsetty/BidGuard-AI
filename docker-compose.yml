@@ -1,0 +1,97 @@
+# ==============================================================================
+# Docker Compose — SIH26100 BidGuard Platform
+# Complete multi-container development environment:
+# - PostgreSQL 16 with pgvector extension
+# - ChromaDB Vector Database
+# - FastAPI Backend Service (Port 8000)
+# - Next.js Frontend Web Application (Port 3000)
+#
+# Quickstart:
+#   docker compose up --build
+# ==============================================================================
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: gem_compliance_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: gem_compliance
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gem_compliance"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gem_network
+
+  chromadb:
+    image: chromadb/chroma:0.5.5
+    container_name: gem_compliance_chroma
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - gem_network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/Dockerfile.backend
+    container_name: gem_compliance_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgrespassword@postgres:5432/gem_compliance
+      SYNC_DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/gem_compliance
+      ALLOW_SQLITE_FALLBACK: "false"
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000"]'
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+    volumes:
+      - ./uploads:/app/uploads
+    networks:
+      - gem_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: gem_compliance_frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - gem_network
+
+volumes:
+  pgdata:
+    driver: local
+  chroma_data:
+    driver: local
+
+networks:
+  gem_network:
+    driver: bridge

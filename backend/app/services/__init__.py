@@ -27,6 +27,8 @@ from app.services.statutory_adapters import (
     DPIITSourceAdapter,
     EPFOSourceAdapter,
     ESICSourceAdapter,
+    NSICSourceAdapter,
+    DigiLockerSourceAdapter,
     StatutoryAdapterRegistry,
     get_statutory_registry,
 )
@@ -34,6 +36,7 @@ from app.services.statutory_orchestrator import (
     StatutoryVerificationOrchestrator,
     get_statutory_orchestrator,
 )
+from app.services.verification_intelligence_service import VerificationIntelligenceService
 
 __all__ = [
     "NvidiaClient",
@@ -59,10 +62,13 @@ __all__ = [
     "DPIITSourceAdapter",
     "EPFOSourceAdapter",
     "ESICSourceAdapter",
+    "NSICSourceAdapter",
+    "DigiLockerSourceAdapter",
     "DebarmentTemporalService",
     "DebarmentTemporalEvaluation",
     "StatutoryAdapterRegistry",
     "get_statutory_registry",
     "StatutoryVerificationOrchestrator",
     "get_statutory_orchestrator",
+    "VerificationIntelligenceService",
 ]

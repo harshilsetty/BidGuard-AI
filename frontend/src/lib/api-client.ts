@@ -22,6 +22,9 @@ import {
   BidderStatutoryVerificationSummary,
   SourceVerificationResult,
   StatutoryAdapterInfo,
+  OfficerBidderVerificationSummary,
+  VerificationHistoryResponse,
+  OfficerReviewQueueResponse,
 } from "./types";
 
 
@@ -529,6 +532,56 @@ export async function fetchStatutoryAdapters(): Promise<StatutoryAdapterInfo[]> 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `Failed to fetch statutory adapters: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ====================================================
+// Phase 8.4 Verification Intelligence Client APIs
+// ====================================================
+
+export async function fetchBidderVerificationSummary(
+  tenderId: string,
+  bidderId: string,
+  asOfDate?: string
+): Promise<OfficerBidderVerificationSummary> {
+  const qs = asOfDate ? `?as_of_date=${encodeURIComponent(asOfDate)}` : "";
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-summary${qs}`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch verification summary: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchBidderVerificationHistory(
+  tenderId: string,
+  bidderId: string
+): Promise<VerificationHistoryResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-history`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch verification history: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function fetchTenderReviewQueue(
+  tenderId: string
+): Promise<OfficerReviewQueueResponse> {
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/tenders/${tenderId}/review-queue`,
+    { cache: "no-store" }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `Failed to fetch tender review queue: ${res.status}`);
   }
   return res.json();
 }

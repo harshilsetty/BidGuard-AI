@@ -58,12 +58,22 @@ class NvidiaEmbeddingProvider(BaseEmbeddingProvider):
         if not self.api_key:
             raise ValueError("NVIDIA_API_KEY is not configured for NvidiaEmbeddingProvider.")
 
-        self._client = AsyncOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            timeout=60.0,
-            max_retries=1,
-        )
+        try:
+            self._client = AsyncOpenAI(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=60.0,
+                max_retries=1,
+            )
+        except TypeError:
+            import httpx
+            self._client = AsyncOpenAI(
+                base_url=self.base_url,
+                api_key=self.api_key,
+                timeout=60.0,
+                max_retries=1,
+                http_client=httpx.AsyncClient(),
+            )
 
     @property
     def model_name(self) -> str:

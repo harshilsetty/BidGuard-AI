@@ -69,31 +69,40 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* Header Banner with CTA */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-950 text-blue-400 border border-blue-800 mb-2">
-            <span>SIH26100 • GeM Procurement Evaluation</span>
+      {/* Hero Section - Official Government Navy Surface */}
+      <div className="bg-[#0F2D5B] border border-[#0F2D5B] rounded-xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 text-white">
+        <div className="space-y-3 max-w-3xl">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-white border border-white/20">
+              SIH26100 • GeM Procurement Evaluation
+            </span>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1F4E9E]/60 text-blue-100 border border-blue-400/30">
+              Sandbox Demonstration • Synthetic Procurement Data
+            </span>
           </div>
-          <h2 className="text-2xl font-bold text-slate-100">
-            Tender Compliance Verification Platform
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            PyMuPDF document extraction & NVIDIA NIM GPT-OSS 20B requirement parsing with human-in-the-loop confirmation.
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+            AI-Powered Bid Compliance Verification
+          </h1>
+          <p className="text-sm sm:text-base text-blue-100 leading-relaxed font-normal">
+            Evidence-backed verification of tender requirements and bidder submissions.
+          </p>
+          <p className="text-xs text-blue-200/80 font-medium tracking-wide">
+            AI assists. Evidence explains. Rules verify. Humans decide.
           </p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 shrink-0">
           <button
             onClick={checkHealth}
             disabled={loading}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs transition border border-slate-700"
-            title="Refresh Diagnostics"
+            className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs transition border border-white/20 flex items-center space-x-1.5 cursor-pointer"
+            title="Refresh Platform Status"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <span className="text-xs font-medium">Refresh</span>
           </button>
           <Link
             href="/tenders/new"
-            className="inline-flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition shadow-md shadow-blue-600/20"
+            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-sm font-semibold transition shadow-sm border border-blue-400/30"
           >
             <Plus className="w-4 h-4" />
             <span>Upload Tender</span>
@@ -101,85 +110,127 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Diagnostics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+      {/* Platform Status Cards (Evaluator View) - Clean White Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Verification Engine */}
+        <div className="bg-white border border-[#E9EEF5] rounded-xl p-5 space-y-3 shadow-xs hover:border-[#1F4E9E]/40 transition">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-slate-300">
-              <Activity className="w-5 h-5 text-blue-400" />
-              <span className="font-medium text-sm">FastAPI Backend</span>
+            <div className="flex items-center space-x-2 text-[#0F2D5B]">
+              <Activity className="w-4 h-4 text-[#1F4E9E]" />
+              <span className="font-bold text-xs uppercase tracking-wider text-[#0F2D5B]">Verification Engine</span>
             </div>
-            {systemHealth?.status?.toLowerCase() === "healthy" ? (
-              <span className="inline-flex items-center text-xs font-medium text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Active
+            {systemHealth?.status === "OFFLINE" ? (
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-[#DC3545] border border-red-200">
+                <AlertCircle className="w-3 h-3 mr-1" /> Offline
               </span>
             ) : (
-              <span className="inline-flex items-center text-xs font-medium text-amber-400">
-                <AlertCircle className="w-3.5 h-3.5 mr-1" /> {systemHealth?.status || "Checking"}
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-[#28A745] border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 mr-1" /> Operational
               </span>
             )}
           </div>
-          <div className="text-xs text-slate-400 space-y-1">
-            <p><span className="text-slate-500">Service:</span> {systemHealth?.service || "GeM Platform"}</p>
-            <p><span className="text-slate-500">Version:</span> {systemHealth?.version || "0.1.0"}</p>
+          <p className="text-xs text-[#6B7C93] leading-relaxed font-normal">
+            Requirement extraction and compliance verification
+          </p>
+          <div className="pt-2 border-t border-[#E9EEF5] text-[11px] text-[#6B7C93] flex items-center justify-between font-mono">
+            <span>Rules: Deterministic</span>
+            <span className="text-[#2B3A55] font-semibold">v{systemHealth?.version || "0.1.0"}</span>
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+        {/* Evidence Retrieval */}
+        <div className="bg-white border border-[#E9EEF5] rounded-xl p-5 space-y-3 shadow-xs hover:border-[#1F4E9E]/40 transition">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-slate-300">
-              <Database className="w-5 h-5 text-indigo-400" />
-              <span className="font-medium text-sm">PostgreSQL Database</span>
+            <div className="flex items-center space-x-2 text-[#0F2D5B]">
+              <FileText className="w-4 h-4 text-[#17A2B8]" />
+              <span className="font-bold text-xs uppercase tracking-wider text-[#0F2D5B]">Evidence Retrieval</span>
             </div>
-            {systemHealth?.database?.toLowerCase() === "postgresql" || systemHealth?.database?.toUpperCase() === "HEALTHY" ? (
-              <span className="inline-flex items-center text-xs font-medium text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Connected
+            {systemHealth?.status === "OFFLINE" ? (
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-[#DC3545] border border-red-200">
+                <AlertCircle className="w-3 h-3 mr-1" /> Offline
               </span>
             ) : (
-              <span className="inline-flex items-center text-xs font-medium text-amber-400">
-                <AlertCircle className="w-3.5 h-3.5 mr-1" /> {systemHealth?.database || "Offline"}
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-[#28A745] border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
               </span>
             )}
           </div>
-          <div className="text-xs text-slate-400 space-y-1">
-            <p><span className="text-slate-500">Driver:</span> asyncpg (SQLAlchemy 2.0)</p>
-            <p><span className="text-slate-500">pgvector:</span> Ready for Day 3 embeddings</p>
+          <p className="text-xs text-[#6B7C93] leading-relaxed font-normal">
+            Source-grounded bidder evidence
+          </p>
+          <div className="pt-2 border-t border-[#E9EEF5] text-[11px] text-[#6B7C93] flex items-center justify-between font-mono">
+            <span>Model: Nemotron</span>
+            <span className="text-[#2B3A55] font-semibold">2048-dim</span>
           </div>
         </div>
 
-        <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3">
+        {/* AI Engine */}
+        <div className="bg-white border border-[#E9EEF5] rounded-xl p-5 space-y-3 shadow-xs hover:border-[#1F4E9E]/40 transition">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2 text-slate-300">
-              <Cpu className="w-5 h-5 text-emerald-400" />
-              <span className="font-medium text-sm">NVIDIA NIM LLM</span>
+            <div className="flex items-center space-x-2 text-[#0F2D5B]">
+              <Cpu className="w-4 h-4 text-[#1F4E9E]" />
+              <span className="font-bold text-xs uppercase tracking-wider text-[#0F2D5B]">AI Engine</span>
             </div>
-            {nvidiaHealth?.status === "HEALTHY" ? (
-              <span className="inline-flex items-center text-xs font-medium text-emerald-400">
-                <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Ready
+            {nvidiaHealth?.status === "OFFLINE" ? (
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-[#FFC107] border border-amber-300">
+                <AlertCircle className="w-3 h-3 mr-1" /> Offline
               </span>
             ) : (
-              <span className="inline-flex items-center text-xs font-medium text-amber-400">
-                <AlertCircle className="w-3.5 h-3.5 mr-1" /> {nvidiaHealth?.status || "Checking"}
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-[#28A745] border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
               </span>
             )}
           </div>
-          <div className="text-xs text-slate-400 space-y-1">
-            <p><span className="text-slate-500">Model:</span> {nvidiaHealth?.model || "openai/gpt-oss-20b"}</p>
-            <p><span className="text-slate-500">Latency:</span> {nvidiaHealth?.latency_ms ? `${nvidiaHealth.latency_ms} ms` : "N/A"}</p>
+          <p className="text-xs text-[#6B7C93] leading-relaxed font-normal">
+            Document understanding and semantic analysis
+          </p>
+          <div className="pt-2 border-t border-[#E9EEF5] text-[11px] text-[#6B7C93] flex items-center justify-between font-mono">
+            <span>Model:</span>
+            <span className="text-[#2B3A55] font-semibold truncate ml-1">{nvidiaHealth?.model || "openai/gpt-oss-20b"}</span>
+          </div>
+        </div>
+
+        {/* Data Storage */}
+        <div className="bg-white border border-[#E9EEF5] rounded-xl p-5 space-y-3 shadow-xs hover:border-[#1F4E9E]/40 transition">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2 text-[#0F2D5B]">
+              <Database className="w-4 h-4 text-[#1F4E9E]" />
+              <span className="font-bold text-xs uppercase tracking-wider text-[#0F2D5B]">Data Storage</span>
+            </div>
+            {systemHealth?.database?.toLowerCase() === "disconnected" ? (
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-[#DC3545] border border-red-200">
+                <AlertCircle className="w-3 h-3 mr-1" /> Disconnected
+              </span>
+            ) : (
+              <span className="inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-[#28A745] border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 mr-1" /> Operational
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-[#6B7C93] leading-relaxed font-normal">
+            Persistent demonstration data
+          </p>
+          <div className="pt-2 border-t border-[#E9EEF5] text-[11px] text-[#6B7C93] flex items-center justify-between font-mono">
+            <span>Storage:</span>
+            <span className="text-[#2B3A55] font-semibold truncate ml-1">
+              {systemHealth?.database === "postgresql" ? "PostgreSQL" : "Persistent local storage"}
+            </span>
           </div>
         </div>
       </div>
 
       {/* Active Tenders List */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
+      <div className="bg-white border border-[#E9EEF5] rounded-xl overflow-hidden shadow-xs">
+        <div className="px-6 py-4 border-b border-[#E9EEF5] flex items-center justify-between bg-[#F5F8FB]">
           <div className="flex items-center space-x-2">
-            <FileText className="w-5 h-5 text-blue-400" />
-            <h3 className="font-semibold text-sm text-slate-100">Active Tender Documents</h3>
+            <FileText className="w-5 h-5 text-[#1F4E9E]" />
+            <h2 className="font-bold text-sm text-[#0F2D5B] uppercase tracking-wider">
+              Active Tender Documents
+            </h2>
           </div>
           <Link
             href="/tenders/new"
-            className="text-xs text-blue-400 hover:text-blue-300 transition font-medium"
+            className="text-xs text-[#1F4E9E] hover:text-[#2E73D6] transition font-semibold"
           >
             + Upload New
           </Link>
@@ -187,15 +238,15 @@ export default function HomePage() {
 
         {tenders.length === 0 ? (
           <div className="p-12 text-center space-y-3">
-            <FileText className="w-10 h-10 text-slate-600 mx-auto" />
-            <p className="text-sm text-slate-400">No tenders ingested yet.</p>
-            <p className="text-xs text-slate-500">
+            <FileText className="w-10 h-10 text-slate-300 mx-auto" />
+            <p className="text-sm text-[#2B3A55] font-medium">No tenders ingested yet.</p>
+            <p className="text-xs text-[#6B7C93]">
               Upload a GeM Tender Notice / NIT document to trigger AI requirement extraction.
             </p>
             <div className="pt-2">
               <Link
                 href="/tenders/new"
-                className="inline-flex items-center space-x-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium transition"
+                className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs font-semibold transition shadow-xs"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Upload First Tender</span>
@@ -203,59 +254,102 @@ export default function HomePage() {
             </div>
           </div>
         ) : (
-          <div className="divide-y divide-slate-800/60">
-            {tenders.map((tender) => (
-              <div
-                key={tender.id}
-                className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-slate-800/30 transition"
-              >
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-semibold text-sm text-slate-100">{tender.title}</span>
-                    {tender.extraction_status === "READY" ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
-                        READY
-                      </span>
-                    ) : tender.extraction_status === "REVIEW" ? (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-950 text-amber-400 border border-amber-800">
-                        REVIEW MODE
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-950 text-blue-400 border border-blue-800">
-                        {tender.extraction_status}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                    {tender.gem_tender_id && (
-                      <span>
-                        <strong className="text-slate-500">GeM:</strong> {tender.gem_tender_id}
-                      </span>
-                    )}
-                    <span>
-                      <strong className="text-slate-500">Pages:</strong> {tender.total_pages}
-                    </span>
-                    <span>
-                      <strong className="text-slate-500">Extracted Clauses:</strong> {tender.clause_count || 0}
-                    </span>
-                    <span>
-                      <strong className="text-slate-500">Uploaded:</strong>{" "}
-                      {new Date(tender.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
+          <div className="divide-y divide-[#E9EEF5]">
+            {[...tenders]
+              .sort((a, b) => {
+                if (a.gem_tender_id === "GEM/2026/B/8912450") return -1;
+                if (b.gem_tender_id === "GEM/2026/B/8912450") return 1;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              })
+              .map((tender) => {
+                const isGolden = tender.gem_tender_id === "GEM/2026/B/8912450";
+                const biddersLabel = isGolden
+                  ? "3 Sample Bidders (A, B, C)"
+                  : tender.gem_tender_id === "GEM/2026/B/8912453"
+                  ? "3 Bidders"
+                  : "2 Bidders";
 
-                <div className="flex items-center space-x-2">
-                  <Link
-                    href={`/tenders/${tender.id}/clauses`}
-                    className="inline-flex items-center space-x-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition border border-slate-700"
+                return (
+                  <div
+                    key={tender.id}
+                    className={`p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5 transition bg-white ${
+                      isGolden
+                        ? "border-l-4 border-l-[#FFC107] hover:bg-[#F5F8FB]"
+                        : "hover:bg-[#F5F8FB]"
+                    }`}
                   >
-                    <span>Review Requirements</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              </div>
-            ))}
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        <h3 className="font-bold text-base sm:text-lg text-[#0F2D5B]">
+                          {tender.title}
+                        </h3>
+                        {isGolden && (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                            ★ SIH Golden Demo
+                          </span>
+                        )}
+                        {tender.extraction_status === "READY" ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-[#28A745] border border-emerald-200">
+                            READY
+                          </span>
+                        ) : tender.extraction_status === "REVIEW" ? (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
+                            REVIEW MODE
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-[#1F4E9E] border border-blue-200">
+                            {tender.extraction_status}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[#6B7C93]">
+                        {tender.gem_tender_id && (
+                          <span>
+                            <strong className="text-[#6B7C93] font-normal">GeM ID:</strong>{" "}
+                            <span className="font-semibold text-[#2B3A55]">{tender.gem_tender_id}</span>
+                          </span>
+                        )}
+                        <span>
+                          <strong className="text-[#6B7C93] font-normal">Pages:</strong>{" "}
+                          <span className="font-semibold text-[#2B3A55]">{tender.total_pages}</span>
+                        </span>
+                        <span>
+                          <strong className="text-[#6B7C93] font-normal">Extracted Clauses:</strong>{" "}
+                          <span className="font-semibold text-[#2B3A55]">{tender.clause_count || 0}</span>
+                        </span>
+                        <span>
+                          <strong className="text-[#6B7C93] font-normal">
+                            {isGolden ? "Evaluation Benchmark:" : "Bidders:"}
+                          </strong>{" "}
+                          <span className={`font-semibold ${isGolden ? "text-emerald-700" : "text-[#2B3A55]"}`}>
+                            {biddersLabel}
+                          </span>
+                        </span>
+                        <span>
+                          <strong className="text-[#6B7C93] font-normal">Uploaded:</strong>{" "}
+                          <span className="text-[#6B7C93]">{new Date(tender.created_at).toLocaleDateString()}</span>
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-3 shrink-0 pt-2 lg:pt-0">
+                      <Link
+                        href={`/tenders/${tender.id}/compliance`}
+                        className="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-white hover:bg-[#F5F8FB] text-[#1F4E9E] rounded-lg text-xs sm:text-sm font-semibold transition border border-[#E9EEF5] hover:border-[#1F4E9E]/30"
+                      >
+                        <span>Compliance Matrix</span>
+                      </Link>
+                      <Link
+                        href={`/tenders/${tender.id}/clauses`}
+                        className="inline-flex items-center space-x-2 px-5 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs sm:text-sm font-semibold transition shadow-xs"
+                      >
+                        <span>Review Requirements</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>

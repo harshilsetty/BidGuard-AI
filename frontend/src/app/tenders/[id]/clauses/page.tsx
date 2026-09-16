@@ -196,38 +196,38 @@ export default function TenderClausesPage({
   return (
     <div className="space-y-6">
       {/* Header Info */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-sm">
+      <div className="bg-white border border-[#E9EEF5] rounded-xl p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
             <button
               onClick={() => router.push("/")}
-              className="inline-flex items-center text-xs text-slate-400 hover:text-slate-200 transition mb-2"
+              className="inline-flex items-center text-xs text-[#6B7C93] hover:text-[#0F2D5B] transition mb-2"
             >
               <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back to Dashboard
             </button>
             <div className="flex items-center space-x-3">
-              <h2 className="text-xl font-bold text-slate-100">{tender?.title}</h2>
+              <h2 className="text-xl font-bold text-[#0F2D5B]">{tender?.title}</h2>
               {tender?.extraction_status === "READY" ? (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-[#28A745] border border-emerald-200">
                   <CheckCircle2 className="w-3 h-3 mr-1" /> READY
                 </span>
               ) : (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-950 text-amber-400 border border-amber-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300">
                   <SlidersHorizontal className="w-3 h-3 mr-1" /> REVIEW MODE
                 </span>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400 pt-1">
+            <div className="flex flex-wrap items-center gap-4 text-xs text-[#6B7C93] pt-1">
               {tender?.gem_tender_id && (
                 <span>
-                  <strong className="text-slate-300">GeM Ref:</strong> {tender.gem_tender_id}
+                  <strong className="text-[#2B3A55]">GeM Ref:</strong> {tender.gem_tender_id}
                 </span>
               )}
               <span>
-                <strong className="text-slate-300">Total Pages:</strong> {tender?.total_pages}
+                <strong className="text-[#2B3A55]">Total Pages:</strong> {tender?.total_pages}
               </span>
               <span>
-                <strong className="text-slate-300">Extracted Requirements:</strong> {clauses.length}
+                <strong className="text-[#2B3A55]">Extracted Requirements:</strong> {clauses.length}
               </span>
             </div>
           </div>
@@ -235,39 +235,39 @@ export default function TenderClausesPage({
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 rounded-lg text-xs font-medium transition"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white hover:bg-[#F5F8FB] border border-[#E9EEF5] text-[#2B3A55] rounded-lg text-xs font-semibold transition shadow-2xs"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 text-[#1F4E9E]" />
               <span>Add Custom Requirement</span>
             </button>
             <button
               onClick={handleConfirmAll}
-              className="inline-flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-medium transition shadow-sm"
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-[#28A745] hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition shadow-xs"
             >
               <Lock className="w-3.5 h-3.5" />
               <span>Confirm & Lock Requirements</span>
             </button>
             <button
               onClick={() => router.push(`/tenders/${tenderId}/bidders`)}
-              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold transition shadow-sm"
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs font-semibold transition shadow-xs"
             >
               <span>Proceed to Bidders & Evaluation</span>
-              <ArrowRight className="w-3.5 h-3.5" />
+              <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
       {successMsg && (
-        <div className="p-4 bg-emerald-950/60 border border-emerald-800 rounded-xl flex items-center space-x-3 text-emerald-300 text-sm">
-          <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-3 text-[#28A745] text-sm">
+          <CheckCircle2 className="w-5 h-5 text-[#28A745] flex-shrink-0" />
           <span>{successMsg}</span>
         </div>
       )}
 
       {error && (
-        <div className="p-4 bg-rose-950/60 border border-rose-800 rounded-xl flex items-center space-x-3 text-rose-300 text-sm">
-          <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0" />
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center space-x-3 text-[#DC3545] text-sm">
+          <AlertCircle className="w-5 h-5 text-[#DC3545] flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
@@ -280,18 +280,18 @@ export default function TenderClausesPage({
             <button
               key={cat.id}
               onClick={() => setSelectedCategory(cat.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-2 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center space-x-2 ${
                 selectedCategory === cat.id
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200"
+                  ? "bg-[#1F4E9E] text-white shadow-xs"
+                  : "bg-white border border-[#E9EEF5] text-[#2B3A55] hover:bg-[#F5F8FB]"
               }`}
             >
               <span>{cat.label}</span>
               <span
                 className={`px-1.5 py-0.2 rounded text-[10px] ${
                   selectedCategory === cat.id
-                    ? "bg-blue-700 text-white"
-                    : "bg-slate-800 text-slate-400"
+                    ? "bg-[#0F2D5B] text-white"
+                    : "bg-slate-100 text-[#6B7C93]"
                 }`}
               >
                 {cat.count}
@@ -302,93 +302,93 @@ export default function TenderClausesPage({
 
         {/* Search */}
         <div className="relative w-full md:w-64">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+          <Search className="w-4 h-4 text-[#6B7C93] absolute left-3 top-2.5" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search requirements..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500"
+            className="w-full bg-white border border-[#E9EEF5] rounded-lg pl-9 pr-3 py-1.5 text-xs text-[#2B3A55] placeholder-slate-400 focus:outline-none focus:border-[#1F4E9E]"
           />
         </div>
       </div>
 
       {/* Clauses Table */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+      <div className="bg-white border border-[#E9EEF5] rounded-xl overflow-hidden shadow-xs">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-slate-950/80 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800">
+          <table className="w-full text-left text-xs text-[#2B3A55]">
+            <thead className="bg-[#F5F8FB] text-[#2B3A55] uppercase tracking-wider font-bold border-b border-[#E9EEF5]">
               <tr>
-                <th className="px-4 py-3 w-28">Code</th>
-                <th className="px-4 py-3 w-32">Category</th>
-                <th className="px-4 py-3">Requirement & Specifications</th>
-                <th className="px-4 py-3 w-28 text-center">Mandatory</th>
-                <th className="px-4 py-3 w-32">Evidence</th>
-                <th className="px-4 py-3 w-24 text-right">Actions</th>
+                <th className="px-4 py-3.5 w-28">Code</th>
+                <th className="px-4 py-3.5 w-32">Category</th>
+                <th className="px-4 py-3.5">Requirement & Specifications</th>
+                <th className="px-4 py-3.5 w-28 text-center">Mandatory</th>
+                <th className="px-4 py-3.5 w-32">Evidence</th>
+                <th className="px-4 py-3.5 w-24 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/60">
+            <tbody className="divide-y divide-[#E9EEF5]">
               {filteredClauses.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-500">
+                  <td colSpan={6} className="px-4 py-12 text-center text-[#6B7C93]">
                     No requirements found for the selected filter.
                   </td>
                 </tr>
               ) : (
                 filteredClauses.map((clause) => (
-                  <tr key={clause.id} className="hover:bg-slate-800/40 transition">
-                    <td className="px-4 py-3 font-mono font-semibold text-blue-400">
+                  <tr key={clause.id} className="hover:bg-[#F5F8FB] transition">
+                    <td className="px-4 py-3.5 font-mono font-bold text-[#1F4E9E]">
                       {clause.clause_code}
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-800 text-slate-300 border border-slate-700">
+                    <td className="px-4 py-3.5">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-[#2B3A55] border border-[#E9EEF5]">
                         {clause.category}
                       </span>
                     </td>
-                    <td className="px-4 py-3 space-y-1">
-                      <p className="font-semibold text-slate-100">{clause.title}</p>
-                      <p className="text-slate-400 line-clamp-2">{clause.description}</p>
+                    <td className="px-4 py-3.5 space-y-1">
+                      <p className="font-bold text-[#0F2D5B]">{clause.title}</p>
+                      <p className="text-[#6B7C93] line-clamp-2">{clause.description}</p>
                       {clause.rule_config && (
                         <div className="pt-1">
-                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-blue-950/60 text-blue-300 border border-blue-800/50">
+                          <span className="inline-block px-2 py-0.5 rounded text-[10px] font-mono bg-blue-50 text-[#1F4E9E] border border-blue-200">
                             Rule: {JSON.stringify(clause.rule_config)}
                           </span>
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3.5 text-center">
                       <button
                         onClick={() => handleToggleMandatory(clause)}
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-semibold transition ${
+                        className={`px-2.5 py-1 rounded-full text-[10px] font-bold transition ${
                           clause.is_mandatory
-                            ? "bg-rose-950/80 text-rose-300 border border-rose-800/80 hover:bg-rose-900"
-                            : "bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700"
+                            ? "bg-red-50 text-[#DC3545] border border-red-200 hover:bg-red-100"
+                            : "bg-slate-100 text-[#6B7C93] border border-[#E9EEF5] hover:bg-slate-200"
                         }`}
                       >
                         {clause.is_mandatory ? "MANDATORY" : "OPTIONAL"}
                       </button>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3.5">
                       <button
                         onClick={() => setEvidenceModalClause(clause)}
-                        className="inline-flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] transition"
+                        className="inline-flex items-center space-x-1 px-2.5 py-1 rounded bg-white hover:bg-[#F5F8FB] text-[#1F4E9E] border border-[#E9EEF5] text-[11px] font-semibold transition shadow-2xs"
                       >
-                        <BookOpen className="w-3 h-3 text-blue-400" />
+                        <BookOpen className="w-3 h-3 text-[#1F4E9E]" />
                         <span>Page {clause.page_number}</span>
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3.5 text-right">
                       <div className="flex items-center justify-end space-x-2">
                         <button
                           onClick={() => setEditModalClause({ ...clause })}
-                          className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
+                          className="p-1.5 rounded hover:bg-slate-100 text-[#6B7C93] hover:text-[#0F2D5B] transition"
                           title="Edit Requirement"
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDeleteClause(clause.id)}
-                          className="p-1 rounded hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition"
+                          className="p-1.5 rounded hover:bg-red-50 text-[#6B7C93] hover:text-[#DC3545] transition"
                           title="Delete Requirement"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -405,34 +405,34 @@ export default function TenderClausesPage({
 
       {/* Evidence Provenance Modal */}
       {evidenceModalClause && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
+          <div className="bg-white border border-[#E9EEF5] rounded-xl max-w-lg w-full p-6 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between border-b border-[#E9EEF5] pb-3">
               <div className="flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-blue-400" />
-                <h3 className="font-semibold text-sm text-slate-100">
+                <FileText className="w-4 h-4 text-[#1F4E9E]" />
+                <h3 className="font-bold text-sm text-[#0F2D5B]">
                   Verbatim Source Evidence Provenance
                 </h3>
               </div>
               <button
                 onClick={() => setEvidenceModalClause(null)}
-                className="text-slate-400 hover:text-slate-200"
+                className="text-[#6B7C93] hover:text-[#2B3A55]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-3 text-xs">
-              <div className="flex justify-between text-slate-400">
-                <span>Clause Code: <strong className="text-blue-400 font-mono">{evidenceModalClause.clause_code}</strong></span>
-                <span>Page in Tender: <strong className="text-slate-200">Page {evidenceModalClause.page_number}</strong></span>
+              <div className="flex justify-between text-[#6B7C93]">
+                <span>Clause Code: <strong className="text-[#1F4E9E] font-mono">{evidenceModalClause.clause_code}</strong></span>
+                <span>Page in Tender: <strong className="text-[#2B3A55]">Page {evidenceModalClause.page_number}</strong></span>
               </div>
               <div>
-                <p className="text-slate-400 font-medium mb-1">Requirement Title:</p>
-                <p className="text-slate-100 font-semibold">{evidenceModalClause.title}</p>
+                <p className="text-[#6B7C93] font-medium mb-1">Requirement Title:</p>
+                <p className="text-[#0F2D5B] font-bold">{evidenceModalClause.title}</p>
               </div>
               <div>
-                <p className="text-slate-400 font-medium mb-1">Ground Truth Snippet from Document:</p>
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-300 font-serif leading-relaxed italic">
+                <p className="text-[#6B7C93] font-medium mb-1">Ground Truth Snippet from Document:</p>
+                <div className="p-3 bg-[#F5F8FB] border border-[#E9EEF5] rounded-lg text-[#2B3A55] font-serif leading-relaxed italic">
                   "{evidenceModalClause.source_text}"
                 </div>
               </div>
@@ -440,7 +440,7 @@ export default function TenderClausesPage({
             <div className="flex justify-end pt-2">
               <button
                 onClick={() => setEvidenceModalClause(null)}
-                className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition"
+                className="px-4 py-1.5 bg-white hover:bg-[#F5F8FB] text-[#2B3A55] border border-[#E9EEF5] rounded-lg text-xs font-semibold transition"
               >
                 Close
               </button>
@@ -451,32 +451,32 @@ export default function TenderClausesPage({
 
       {/* Edit Clause Modal */}
       {editModalClause && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <form
             onSubmit={handleSaveEdit}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-xl w-full p-6 space-y-4 shadow-2xl"
+            className="bg-white border border-[#E9EEF5] rounded-xl max-w-xl w-full p-6 space-y-4 shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-semibold text-sm text-slate-100">
+            <div className="flex items-center justify-between border-b border-[#E9EEF5] pb-3">
+              <h3 className="font-bold text-sm text-[#0F2D5B]">
                 Edit Requirement ({editModalClause.clause_code})
               </h3>
               <button
                 type="button"
                 onClick={() => setEditModalClause(null)}
-                className="text-slate-400 hover:text-slate-200"
+                className="text-[#6B7C93] hover:text-[#2B3A55]"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="space-y-3 text-xs">
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Category</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Category</label>
                 <select
                   value={editModalClause.category}
                   onChange={(e) =>
                     setEditModalClause({ ...editModalClause, category: e.target.value })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 >
                   <option value="TECHNICAL">TECHNICAL</option>
                   <option value="FINANCIAL">FINANCIAL</option>
@@ -486,7 +486,7 @@ export default function TenderClausesPage({
                 </select>
               </div>
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Title</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Title</label>
                 <input
                   type="text"
                   required
@@ -494,11 +494,11 @@ export default function TenderClausesPage({
                   onChange={(e) =>
                     setEditModalClause({ ...editModalClause, title: e.target.value })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Description</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Description</label>
                 <textarea
                   rows={3}
                   required
@@ -506,7 +506,7 @@ export default function TenderClausesPage({
                   onChange={(e) =>
                     setEditModalClause({ ...editModalClause, description: e.target.value })
                   }
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 />
               </div>
               <div className="flex items-center space-x-2">
@@ -520,9 +520,9 @@ export default function TenderClausesPage({
                       is_mandatory: e.target.checked,
                     })
                   }
-                  className="rounded border-slate-700 text-blue-600 focus:ring-0"
+                  className="rounded border-[#E9EEF5] text-[#1F4E9E] focus:ring-0"
                 />
-                <label htmlFor="editMandatory" className="text-slate-300 font-medium cursor-pointer">
+                <label htmlFor="editMandatory" className="text-[#2B3A55] font-medium cursor-pointer">
                   Mandatory criteria (Non-compliance disqualifies bid)
                 </label>
               </div>
@@ -531,13 +531,13 @@ export default function TenderClausesPage({
               <button
                 type="button"
                 onClick={() => setEditModalClause(null)}
-                className="px-4 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs"
+                className="px-4 py-1.5 bg-white border border-[#E9EEF5] text-[#6B7C93] hover:text-[#2B3A55] rounded-lg text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium"
+                className="px-4 py-1.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs font-semibold"
               >
                 Save Changes
               </button>
@@ -548,19 +548,19 @@ export default function TenderClausesPage({
 
       {/* Add Custom Requirement Modal */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <form
             onSubmit={handleAddClause}
-            className="bg-slate-900 border border-slate-800 rounded-xl max-w-xl w-full p-6 space-y-4 shadow-2xl"
+            className="bg-white border border-[#E9EEF5] rounded-xl max-w-xl w-full p-6 space-y-4 shadow-xl"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-semibold text-sm text-slate-100">
+            <div className="flex items-center justify-between border-b border-[#E9EEF5] pb-3">
+              <h3 className="font-bold text-sm text-[#0F2D5B]">
                 Add Custom Tender Requirement
               </h3>
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="text-slate-400 hover:text-slate-200"
+                className="text-[#6B7C93] hover:text-[#2B3A55]"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -568,11 +568,11 @@ export default function TenderClausesPage({
             <div className="space-y-3 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Category</label>
+                  <label className="block text-[#2B3A55] font-semibold mb-1">Category</label>
                   <select
                     value={newCategory}
                     onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                    className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                   >
                     <option value="TECHNICAL">TECHNICAL</option>
                     <option value="FINANCIAL">FINANCIAL</option>
@@ -582,46 +582,46 @@ export default function TenderClausesPage({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-slate-400 font-medium mb-1">Source Page</label>
+                  <label className="block text-[#2B3A55] font-semibold mb-1">Source Page</label>
                   <input
                     type="number"
                     min={1}
                     value={newPageNum}
                     onChange={(e) => setNewPageNum(parseInt(e.target.value) || 1)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                    className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Requirement Title *</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Requirement Title *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. OEM Authorized Partner Certification"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Description *</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Description *</label>
                 <textarea
                   rows={3}
                   required
                   placeholder="Detailed criteria for evaluation..."
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 font-medium mb-1">Source Quote from PDF (Optional)</label>
+                <label className="block text-[#2B3A55] font-semibold mb-1">Source Quote from PDF (Optional)</label>
                 <textarea
                   rows={2}
                   placeholder="Verbatim text reference..."
                   value={newSourceText}
                   onChange={(e) => setNewSourceText(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-slate-100"
+                  className="w-full bg-white border border-[#E9EEF5] rounded-lg px-3 py-2 text-[#2B3A55]"
                 />
               </div>
               <div className="flex items-center space-x-2 pt-1">
@@ -630,9 +630,9 @@ export default function TenderClausesPage({
                   id="newMandatory"
                   checked={newMandatory}
                   onChange={(e) => setNewMandatory(e.target.checked)}
-                  className="rounded border-slate-700 text-blue-600 focus:ring-0"
+                  className="rounded border-[#E9EEF5] text-[#1F4E9E] focus:ring-0"
                 />
-                <label htmlFor="newMandatory" className="text-slate-300 font-medium cursor-pointer">
+                <label htmlFor="newMandatory" className="text-[#2B3A55] font-medium cursor-pointer">
                   Mandatory criteria (Disqualifies bid if not satisfied)
                 </label>
               </div>
@@ -641,13 +641,13 @@ export default function TenderClausesPage({
               <button
                 type="button"
                 onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs"
+                className="px-4 py-1.5 bg-white border border-[#E9EEF5] text-[#6B7C93] hover:text-[#2B3A55] rounded-lg text-xs font-semibold"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-medium"
+                className="px-4 py-1.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs font-semibold"
               >
                 Add Requirement
               </button>

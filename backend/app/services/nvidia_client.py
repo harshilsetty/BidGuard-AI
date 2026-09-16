@@ -25,12 +25,22 @@ class NvidiaClient:
 
         self._client: Optional[AsyncOpenAI] = None
         if self.api_key:
-            self._client = AsyncOpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=90.0,
-                max_retries=0,
-            )
+            try:
+                self._client = AsyncOpenAI(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=90.0,
+                    max_retries=0,
+                )
+            except TypeError:
+                import httpx
+                self._client = AsyncOpenAI(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=90.0,
+                    max_retries=0,
+                    http_client=httpx.AsyncClient(),
+                )
 
     @property
     def is_configured(self) -> bool:
@@ -40,12 +50,22 @@ class NvidiaClient:
         if not self._client:
             if not self.api_key:
                 raise ValueError("NVIDIA_API_KEY is not configured in the environment.")
-            self._client = AsyncOpenAI(
-                base_url=self.base_url,
-                api_key=self.api_key,
-                timeout=120.0,
-                max_retries=0,
-            )
+            try:
+                self._client = AsyncOpenAI(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=120.0,
+                    max_retries=0,
+                )
+            except TypeError:
+                import httpx
+                self._client = AsyncOpenAI(
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    timeout=120.0,
+                    max_retries=0,
+                    http_client=httpx.AsyncClient(),
+                )
         return self._client
 
     async def chat(

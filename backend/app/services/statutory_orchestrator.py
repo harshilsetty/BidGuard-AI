@@ -17,7 +17,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.core.database import AsyncSessionLocal
+from app.core import database as db_core
 from app.schemas.statutory_verification import (
     StatutoryAuthority,
     SourceMode,
@@ -222,7 +222,7 @@ class StatutoryVerificationOrchestrator:
 
         async def _run_adapter(adp: BaseSourceAdapter, q_id: str, id_type: str) -> SourceVerificationResult:
             if db is not None:
-                async with AsyncSessionLocal() as task_session:
+                async with db_core.AsyncSessionLocal() as task_session:
                     return await self.execute_adapter(
                         adapter=adp,
                         query_identifier=q_id,

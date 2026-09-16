@@ -1,0 +1,53 @@
+{
+  "_notice": "SYNTHETIC BENCHMARK DATASET - FOR SIH26100 TEST & DEMO ONLY. NOT REAL GOVERNMENT RECORDS.",
+  "bidder_id": "BDR-NON-COMPLIANT-002",
+  "bidder_name": "Vanguard Telecom Infrastructure LLP",
+  "pan": "AAAFV9876M",
+  "gstin": "06AAAFV9876M1Z8",
+  "udyam": "UDYAM-HR-02-0099881",
+  "submission_summary": {
+    "total_documents": 2,
+    "documents": [
+      "vanguard_bid_annexures.pdf",
+      "financial_balance_sheet_2023.pdf"
+    ]
+  },
+  "compliance_evaluations": [
+    {
+      "requirement_id": "REQ-001",
+      "requirement": "Bidder must have average annual turnover of at least INR 5.0 crore during the last 3 financial years.",
+      "requirement_type": "financial",
+      "evidence": [
+        {
+          "text": "Average turnover for the firm over the stated period is INR 2.80 crore.",
+          "document": "financial_balance_sheet_2023.pdf",
+          "page": 5
+        }
+      ],
+      "status": "FAIL",
+      "confidence": 1.0,
+      "reason": "Turnover of INR 2.80 crore is below mandatory threshold of INR 5.0 crore (Deterministic rule validation).",
+      "requires_human_review": false,
+      "contradiction_detected": false
+    },
+    {
+      "requirement_id": "REQ-003",
+      "requirement": "Bidder must not be under active debarment or blacklisting order by any Central/State Ministry.",
+      "requirement_type": "legal",
+      "evidence": [
+        {
+          "text": "Self-declaration claiming clean legal record.",
+          "document": "vanguard_bid_annexures.pdf",
+          "page": 3
+        }
+      ],
+      "status": "FAIL",
+      "confidence": 1.0,
+      "reason": "Deterministic check detected active debarment order issued by Department of Telecommunications valid until 31-Dec-2026.",
+      "requires_human_review": false,
+      "contradiction_detected": false
+    }
+  ],
+  "overall_score": 38.0,
+  "final_recommendation": "DISQUALIFIED_MANDATORY_CRITERIA_FAILED"
+}

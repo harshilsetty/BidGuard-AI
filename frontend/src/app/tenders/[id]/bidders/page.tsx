@@ -196,47 +196,47 @@ export default function TenderBiddersPage({
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Top Breadcrumb & Status Header */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
+      <div className="bg-white border border-[#E9EEF5] rounded-xl p-5 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="flex items-center space-x-2 text-xs text-slate-500 mb-1">
+            <div className="flex items-center space-x-2 text-xs text-[#6B7C93] mb-1">
               <button
                 onClick={() => router.push(`/tenders/${tenderId}/clauses`)}
-                className="hover:text-blue-900 flex items-center font-medium"
+                className="hover:text-[#1F4E9E] flex items-center font-medium"
               >
                 <ArrowLeft className="w-3 h-3 mr-1" /> Tender Clauses
               </button>
               <span>/</span>
-              <span className="text-slate-800 font-semibold">Bidder Workspace</span>
+              <span className="text-[#2B3A55] font-semibold">Bidder Workspace</span>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-xl font-bold text-slate-900 tracking-tight">
+              <h1 className="text-xl font-bold text-[#0F2D5B] tracking-tight">
                 {tender?.title || "Enterprise Server Compute Infrastructure Procurement"}
               </h1>
-              <span className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              <span className="font-mono text-xs text-[#2B3A55] bg-slate-100 px-2 py-0.5 rounded border border-[#E9EEF5]">
                 {tender?.gem_tender_id || "GEM/2026/B/8912450"}
               </span>
             </div>
 
-            <div className="flex items-center gap-4 text-xs text-slate-600 pt-1">
-              <span className="inline-flex items-center text-blue-900 font-semibold">
-                <FileCheck className="w-3.5 h-3.5 mr-1 text-blue-700" />
+            <div className="flex items-center gap-4 text-xs text-[#6B7C93] pt-1">
+              <span className="inline-flex items-center text-[#1F4E9E] font-semibold">
+                <FileCheck className="w-3.5 h-3.5 mr-1 text-[#1F4E9E]" />
                 11 Requirements
               </span>
               <span>•</span>
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-[#28A745] border border-emerald-200">
+                <CheckCircle2 className="w-3 h-3 mr-1 text-[#28A745]" />
                 Ready for Evaluation
               </span>
             </div>
           </div>
 
           {/* Quick Flow Indicator */}
-          <div className="hidden lg:flex items-center text-xs text-slate-500 space-x-2 bg-slate-50 px-3.5 py-2 rounded-md border border-slate-200">
+          <div className="hidden lg:flex items-center text-xs text-[#6B7C93] space-x-2 bg-[#F5F8FB] px-3.5 py-2 rounded-lg border border-[#E9EEF5]">
             <span className="text-slate-400">1. Clauses Confirmed</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-            <span className="font-bold text-blue-900">2. Bidders & Packets</span>
+            <span className="font-bold text-[#0F2D5B]">2. Bidders & Packets</span>
             <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
             <span className="text-slate-400">3. Compliance Matrix</span>
           </div>
@@ -244,11 +244,11 @@ export default function TenderBiddersPage({
       </div>
 
       {/* Main Workspace Area */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+      <div className="bg-white border border-[#E9EEF5] rounded-xl p-6 shadow-xs space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E9EEF5] pb-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">Bidder Evaluation Workspace</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h2 className="text-lg font-bold text-[#0F2D5B]">Bidder Evaluation Workspace</h2>
+            <p className="text-xs text-[#6B7C93] mt-0.5">
               Upload bidder documents or load the SIH demonstration dataset.
             </p>
           </div>
@@ -256,33 +256,33 @@ export default function TenderBiddersPage({
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={() => setIsAddModalOpen(true)}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-md text-xs font-semibold transition shadow-sm"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2 bg-white hover:bg-[#F5F8FB] border border-[#E9EEF5] text-[#2B3A55] rounded-lg text-xs font-semibold transition shadow-2xs"
             >
-              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <Plus className="w-3.5 h-3.5 text-[#1F4E9E]" />
               <span>+ Add Bidder</span>
             </button>
 
             <button
               onClick={handleLoadDemoBidders}
               disabled={demoLoading}
-              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-900 rounded-md text-xs font-bold transition shadow-sm"
+              className="inline-flex items-center space-x-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-[#1F4E9E] rounded-lg text-xs font-bold transition shadow-xs"
             >
-              <Sparkles className="w-3.5 h-3.5 text-blue-700" />
+              <Sparkles className="w-3.5 h-3.5 text-[#1F4E9E]" />
               <span>{demoLoading ? "Loading Benchmark..." : "Load SIH Demo Bidders A, B, C"}</span>
             </button>
           </div>
         </div>
 
         {successMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-md flex items-center space-x-2.5 text-emerald-800 text-xs font-medium">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center space-x-2.5 text-[#28A745] text-xs font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-[#28A745] flex-shrink-0" />
             <span>{successMsg}</span>
           </div>
         )}
 
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-md flex items-center space-x-2.5 text-rose-800 text-xs font-medium">
-            <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg flex items-center space-x-2.5 text-[#DC3545] text-xs font-semibold">
+            <AlertCircle className="w-4 h-4 text-[#DC3545] flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -292,50 +292,50 @@ export default function TenderBiddersPage({
           {bidders.map((b) => (
             <div
               key={b.id}
-              className="bg-slate-50/70 hover:bg-slate-50 border border-slate-200 rounded-lg p-5 flex flex-col justify-between transition shadow-sm hover:shadow"
+              className="bg-[#F5F8FB] hover:bg-white border border-[#E9EEF5] hover:border-[#1F4E9E]/40 rounded-xl p-5 flex flex-col justify-between transition shadow-xs"
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <h3 className="font-bold text-slate-900 text-sm leading-snug">
+                    <h3 className="font-bold text-[#0F2D5B] text-sm leading-snug">
                       {b.company_name}
                     </h3>
-                    <p className="text-[11px] font-semibold text-blue-800">
+                    <p className="text-[11px] font-semibold text-[#1F4E9E]">
                       {getSubLabel(b.company_name)}
                     </p>
                   </div>
                   <Building2 className="w-5 h-5 text-slate-400 flex-shrink-0" />
                 </div>
 
-                <div className="border-t border-slate-200/80 pt-3 space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-600">
-                    <span className="flex items-center text-slate-500">
-                      <FileText className="w-3.5 h-3.5 mr-1 text-slate-400" /> Documents
+                <div className="border-t border-[#E9EEF5] pt-3 space-y-2 text-xs">
+                  <div className="flex justify-between items-center text-[#6B7C93]">
+                    <span className="flex items-center text-[#6B7C93]">
+                      <FileText className="w-3.5 h-3.5 mr-1 text-[#1F4E9E]" /> Documents
                     </span>
-                    <span className="font-bold text-slate-900">{b.documents_count || 1}</span>
+                    <span className="font-bold text-[#2B3A55]">{b.documents_count || 1}</span>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-600">
-                    <span className="flex items-center text-slate-500">
-                      <Layers className="w-3.5 h-3.5 mr-1 text-slate-400" /> Chunks
+                  <div className="flex justify-between items-center text-[#6B7C93]">
+                    <span className="flex items-center text-[#6B7C93]">
+                      <Layers className="w-3.5 h-3.5 mr-1 text-[#1F4E9E]" /> Chunks
                     </span>
-                    <span className="font-bold text-slate-900">{b.chunks_count || 4}</span>
+                    <span className="font-bold text-[#2B3A55]">{b.chunks_count || 4}</span>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-600">
-                    <span className="text-slate-500">Status</span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" />
+                  <div className="flex justify-between items-center text-[#6B7C93]">
+                    <span className="text-[#6B7C93]">Status</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-50 text-[#28A745] border border-emerald-200">
+                      <CheckCircle2 className="w-3 h-3 mr-1 text-[#28A745]" />
                       Ready
                     </span>
                   </div>
                 </div>
               </div>
 
-              <div className="pt-4 mt-3 border-t border-slate-200/80">
+              <div className="pt-4 mt-3 border-t border-[#E9EEF5]">
                 <button
                   onClick={() => setDocModalBidder(b)}
-                  className="w-full py-1.5 px-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 text-xs font-semibold rounded-md transition text-center shadow-xs"
+                  className="w-full py-1.5 px-3 bg-white hover:bg-[#F5F8FB] border border-[#E9EEF5] text-[#2B3A55] text-xs font-semibold rounded-lg transition text-center shadow-2xs"
                 >
                   View Documents
                 </button>
@@ -345,16 +345,16 @@ export default function TenderBiddersPage({
         </div>
 
         {/* Prominent Bottom CTA */}
-        <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center space-x-2 text-xs text-slate-500">
-            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+        <div className="pt-6 border-t border-[#E9EEF5] flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center space-x-2 text-xs text-[#6B7C93]">
+            <ShieldCheck className="w-4 h-4 text-[#28A745]" />
             <span>Deterministic Python verification will evaluate all 11 criteria against 3 bidders.</span>
           </div>
 
           <button
             onClick={handleRunEvaluation}
             disabled={evalLoading}
-            className="w-full sm:w-auto inline-flex items-center justify-center space-x-2.5 px-7 py-3 bg-blue-900 hover:bg-blue-800 disabled:bg-slate-400 text-white font-bold text-sm rounded-md transition shadow-md hover:shadow-lg"
+            className="w-full sm:w-auto inline-flex items-center justify-center space-x-2.5 px-7 py-3 bg-[#1F4E9E] hover:bg-[#2E73D6] disabled:bg-slate-300 text-white font-bold text-sm rounded-lg transition shadow-xs"
           >
             <span>{evalLoading ? "Executing Compliance Engine..." : "Run Compliance Verification →"}</span>
           </button>

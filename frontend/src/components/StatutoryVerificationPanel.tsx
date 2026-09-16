@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StatutoryAuthority,
   SourceVerificationResult,
@@ -39,20 +39,30 @@ export default function StatutoryVerificationPanel({
   const [summary, setSummary] = useState<BidderStatutoryVerificationSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (bidders.length > 0 && (!selectedBidderId || !bidders.some((b) => b.id === selectedBidderId))) {
+      setSelectedBidderId(bidders[0].id);
+    }
+  }, [bidders, selectedBidderId]);
+
   const handleVerify = async () => {
-    if (!selectedBidderId) return;
+    const activeBidderId = selectedBidderId || (bidders.length > 0 ? bidders[0].id : "");
+    if (!activeBidderId) return;
     setLoading(true);
     setError(null);
 
-    const selectedBidder = bidders.find((b) => b.id === selectedBidderId);
+    const selectedBidder = bidders.find((b) => b.id === activeBidderId) || bidders[0];
+    const cleanCompanyName = selectedBidder
+      ? selectedBidder.company_name.replace(/\s*\([^)]*\)/g, "").trim()
+      : "";
 
     try {
       const res = await verifyStatutorySources({
         tender_id: tenderId,
         bidder_id: selectedBidderId,
         as_of_date: asOfDate ? asOfDate : null,
-        identifiers: selectedBidder
-          ? { company_name: selectedBidder.company_name }
+        identifiers: cleanCompanyName
+          ? { company_name: cleanCompanyName }
           : {},
       });
       setSummary(res);
@@ -178,60 +188,64 @@ export default function StatutoryVerificationPanel({
     switch (result.authority) {
       case "GSTN":
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">GSTIN:</span>
-              <span className="font-mono font-bold text-slate-800">{p.gstin || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">GSTIN:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.gstin || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Verified Turnover:</span>
-              <span className="font-semibold text-slate-800">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Turnover:</span>
+              <span className="font-bold text-slate-900 text-right">
                 {p.verified_turnover ? `₹${p.verified_turnover.toFixed(2)} Cr` : "N/A"}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Filing Status:</span>
-              <span className="font-medium text-slate-700">{p.filing_status || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Filing Status:</span>
+              <span className="font-semibold text-emerald-700 text-right">{p.filing_status || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">State:</span>
-              <span className="text-slate-700">{p.state || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">State:</span>
+              <span className="text-slate-700 text-right">{p.state || "N/A"}</span>
             </div>
           </div>
         );
 
       case "UDYAM":
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Registration:</span>
-              <span className="font-mono font-bold text-slate-800">{p.udyam_registration_number || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Registration:</span>
+              <span className="font-mono font-bold text-slate-900 text-[11px] text-right truncate" title={p.udyam_registration_number}>
+                {p.udyam_registration_number || "N/A"}
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Enterprise Type:</span>
-              <span className="font-semibold text-emerald-700">{p.enterprise_type || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Enterprise:</span>
+              <span className="font-bold text-emerald-700 text-right">{p.enterprise_type || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Activity:</span>
-              <span className="text-slate-700">{p.major_activity || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Activity:</span>
+              <span className="text-slate-700 text-right truncate max-w-[150px]">{p.major_activity || "N/A"}</span>
             </div>
           </div>
         );
 
       case "MCA":
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">CIN:</span>
-              <span className="font-mono font-bold text-slate-800">{p.cin || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">CIN:</span>
+              <span className="font-mono font-bold text-slate-900 text-[10.5px] text-right truncate" title={p.cin}>
+                {p.cin || "N/A"}
+              </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Status:</span>
-              <span className="font-semibold text-purple-700">{p.company_status || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Status:</span>
+              <span className="font-semibold text-purple-700 text-right">{p.company_status || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Auth Capital:</span>
-              <span className="text-slate-700">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Auth Capital:</span>
+              <span className="text-slate-700 text-right">
                 {p.authorized_capital_cr ? `₹${p.authorized_capital_cr} Cr` : "N/A"}
               </span>
             </div>
@@ -240,38 +254,38 @@ export default function StatutoryVerificationPanel({
 
       case "INCOME_TAX":
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">PAN:</span>
-              <span className="font-mono font-bold text-slate-800">{p.pan || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">PAN:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.pan || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">PAN Status:</span>
-              <span className="font-semibold text-slate-800">{p.pan_status || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">PAN Status:</span>
+              <span className="font-semibold text-emerald-700 text-right">{p.pan_status || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Last ITR FY:</span>
-              <span className="text-slate-700">{p.last_itr_filed_fy || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Last ITR FY:</span>
+              <span className="text-slate-700 font-mono text-right">{p.last_itr_filed_fy || "N/A"}</span>
             </div>
           </div>
         );
 
       case "MII":
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Local Content:</span>
-              <span className="font-bold text-indigo-700">
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Local Content:</span>
+              <span className="font-bold text-indigo-700 text-right">
                 {p.verified_local_content !== undefined ? `${p.verified_local_content}%` : "N/A"}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Certificate Ref:</span>
-              <span className="font-mono text-slate-700">{p.certificate_reference || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Certificate Ref:</span>
+              <span className="font-mono text-slate-700 text-right truncate max-w-[150px]">{p.certificate_reference || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Authority:</span>
-              <span className="text-slate-600 truncate max-w-[150px]">{p.certifying_authority || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Authority:</span>
+              <span className="text-slate-600 truncate max-w-[150px] text-right">{p.certifying_authority || "N/A"}</span>
             </div>
           </div>
         );
@@ -389,25 +403,25 @@ export default function StatutoryVerificationPanel({
           );
         }
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Certificate:</span>
-              <span className="font-mono font-bold text-slate-800">{p.certificate_number || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Certificate:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.certificate_number || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Status:</span>
-              <span className={`font-semibold ${p.is_recognized ? "text-cyan-700" : "text-amber-700"}`}>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Status:</span>
+              <span className={`font-semibold text-right ${p.is_recognized ? "text-cyan-700" : "text-amber-700"}`}>
                 {p.recognition_status || (p.is_recognized ? "RECOGNIZED" : "NOT_RECOGNIZED")}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Entity:</span>
-              <span className="text-slate-700 truncate max-w-[120px]">{p.entity_name || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Entity:</span>
+              <span className="text-slate-700 truncate max-w-[150px] text-right">{p.entity_name || "N/A"}</span>
             </div>
             {p.valid_until && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Valid Until:</span>
-                <span className="font-mono text-slate-700">{p.valid_until}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Valid Until:</span>
+                <span className="font-mono text-slate-700 text-right">{p.valid_until}</span>
               </div>
             )}
           </div>
@@ -420,28 +434,28 @@ export default function StatutoryVerificationPanel({
               <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-medium">
                 Ambiguous name match — Authoritative code required
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Candidate Est:</span>
-                <span className="font-mono text-slate-700">{p.candidate_establishment_code || "N/A"}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Candidate Est:</span>
+                <span className="font-mono text-slate-700 text-right">{p.candidate_establishment_code || "N/A"}</span>
               </div>
             </div>
           );
         }
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Est. Code:</span>
-              <span className="font-mono font-bold text-slate-800">{p.establishment_code || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Est. Code:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.establishment_code || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Coverage:</span>
-              <span className={`font-semibold ${p.is_covered ? "text-teal-700" : "text-slate-600"}`}>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Coverage:</span>
+              <span className={`font-semibold text-right ${p.is_covered ? "text-teal-700" : "text-slate-600"}`}>
                 {p.status || (p.is_covered ? "COVERED" : "INACTIVE")}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Office:</span>
-              <span className="text-slate-700 truncate max-w-[120px]">{p.office_name || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Office:</span>
+              <span className="text-slate-700 truncate max-w-[150px] text-right">{p.office_name || "N/A"}</span>
             </div>
           </div>
         );
@@ -453,28 +467,28 @@ export default function StatutoryVerificationPanel({
               <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-medium">
                 Ambiguous name match — Authoritative code required
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Candidate ESIC:</span>
-                <span className="font-mono text-slate-700">{p.candidate_esic_code || "N/A"}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Candidate ESIC:</span>
+                <span className="font-mono text-slate-700 text-right">{p.candidate_esic_code || "N/A"}</span>
               </div>
             </div>
           );
         }
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">ESIC Code:</span>
-              <span className="font-mono font-bold text-slate-800">{p.esic_code || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">ESIC Code:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.esic_code || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Status:</span>
-              <span className={`font-semibold ${p.is_covered ? "text-blue-700" : "text-slate-600"}`}>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Status:</span>
+              <span className={`font-semibold text-right ${p.is_covered ? "text-blue-700" : "text-slate-600"}`}>
                 {p.status || (p.is_covered ? "ACTIVE" : "INACTIVE")}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Region:</span>
-              <span className="text-slate-700">{p.region || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Region:</span>
+              <span className="text-slate-700 text-right">{p.region || "N/A"}</span>
             </div>
           </div>
         );
@@ -486,35 +500,35 @@ export default function StatutoryVerificationPanel({
               <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-medium">
                 {p.conflict_detected ? "Identity conflict detected — Officer review required" : "Ambiguous firm name match — Registration code required"}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Candidate Reg:</span>
-                <span className="font-mono text-slate-700">{p.candidate_registration_number || p.queried_registration_number || "N/A"}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Candidate Reg:</span>
+                <span className="font-mono text-slate-700 text-right">{p.candidate_registration_number || p.queried_registration_number || "N/A"}</span>
               </div>
             </div>
           );
         }
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">SPRS Reg:</span>
-              <span className="font-mono font-bold text-slate-800">{p.registration_number || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">SPRS Reg:</span>
+              <span className="font-mono font-bold text-slate-900 text-right">{p.registration_number || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Status:</span>
-              <span className={`font-semibold ${p.is_registered ? "text-emerald-700" : "text-amber-700"}`}>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Status:</span>
+              <span className={`font-semibold text-right ${p.is_registered ? "text-emerald-700" : "text-amber-700"}`}>
                 {p.status || (p.is_registered ? "ACTIVE" : "INACTIVE")}
               </span>
             </div>
             {p.monetary_limit && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Monetary Limit:</span>
-                <span className="font-semibold text-slate-800">₹{p.monetary_limit} Lakhs</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Monetary Limit:</span>
+                <span className="font-semibold text-slate-800 text-right">₹{p.monetary_limit} Lakhs</span>
               </div>
             )}
             {p.expiry_date && (
-              <div className="flex justify-between">
-                <span className="text-slate-500">Valid Until:</span>
-                <span className="font-mono text-slate-700">{p.expiry_date}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Valid Until:</span>
+                <span className="font-mono text-slate-700 text-right">{p.expiry_date}</span>
               </div>
             )}
           </div>
@@ -527,32 +541,32 @@ export default function StatutoryVerificationPanel({
               <div className="p-1.5 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[10px] font-medium">
                 {p.conflict_detected ? "Subject identity conflict — Officer review required" : "Specific document reference or subject identifier required"}
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Document Ref:</span>
-                <span className="font-mono text-slate-700">{p.queried_document_reference || "N/A"}</span>
+              <div className="flex justify-between items-center gap-2">
+                <span className="text-slate-500 shrink-0 font-medium">Document Ref:</span>
+                <span className="font-mono text-slate-700 text-right">{p.queried_document_reference || "N/A"}</span>
               </div>
             </div>
           );
         }
         return (
-          <div className="space-y-1 text-[11px] text-slate-600">
-            <div className="flex justify-between">
-              <span className="text-slate-500">Doc Type:</span>
-              <span className="font-medium text-slate-800 truncate max-w-[120px]">{p.document_type || "N/A"}</span>
+          <div className="space-y-1.5 text-[11px] text-slate-600">
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Doc Type:</span>
+              <span className="font-medium text-slate-800 truncate max-w-[150px] text-right">{p.document_type || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Issuer:</span>
-              <span className="text-slate-700 truncate max-w-[120px]">{p.issuer || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Issuer:</span>
+              <span className="text-slate-700 truncate max-w-[150px] text-right">{p.issuer || "N/A"}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Signature:</span>
-              <span className={`font-semibold ${p.signature_status === "VALID" ? "text-emerald-700" : "text-rose-700"}`}>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Signature:</span>
+              <span className={`font-semibold text-right ${p.signature_status === "VALID" ? "text-emerald-700" : "text-rose-700"}`}>
                 {p.signature_status || "N/A"}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-slate-500">Doc Ref:</span>
-              <span className="font-mono text-slate-700 truncate max-w-[120px]">{p.document_reference || "N/A"}</span>
+            <div className="flex justify-between items-center gap-2">
+              <span className="text-slate-500 shrink-0 font-medium">Doc Ref:</span>
+              <span className="font-mono text-slate-700 truncate max-w-[150px] text-right">{p.document_reference || "N/A"}</span>
             </div>
           </div>
         );
@@ -567,36 +581,36 @@ export default function StatutoryVerificationPanel({
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm space-y-5">
+    <div className="bg-white border border-[#E9EEF5] rounded-xl p-6 shadow-xs space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-900 shadow-xs">
-            <Landmark className="w-5 h-5" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E9EEF5] pb-5">
+        <div className="flex items-center space-x-3.5">
+          <div className="w-11 h-11 rounded-xl bg-blue-50 border border-blue-200/80 flex items-center justify-center text-blue-900 shadow-2xs">
+            <Landmark className="w-5 h-5 text-[#0F2D5B]" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900">
+            <h3 className="text-base font-bold text-[#0F2D5B] tracking-tight">
               Statutory Verification Orchestrator
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#6B7C93] mt-0.5">
               Authoritative multi-source register checks (GSTN, Udyam, MCA, Income Tax, MII, Debarment, DPIIT, EPFO, ESIC, NSIC, DigiLocker)
             </p>
           </div>
         </div>
 
-        <span className="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
+        <span className="inline-flex items-center px-3 py-1 rounded-md text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200/80 shadow-2xs">
           MOCK GOVERNMENT SOURCE — SIH DEMONSTRATION
         </span>
       </div>
 
       {/* Query Control Bar */}
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 flex flex-wrap items-center gap-4 text-xs">
+      <div className="bg-[#F8FAFC] border border-[#E9EEF5] rounded-xl p-4 sm:p-5 flex flex-wrap items-center gap-4 text-xs">
         <div className="flex items-center space-x-2">
           <label className="font-semibold text-slate-700">Target Bidder:</label>
           <select
             value={selectedBidderId}
             onChange={(e) => setSelectedBidderId(e.target.value)}
-            className="bg-white border border-slate-300 rounded px-3 py-1.5 text-slate-900 font-medium focus:outline-none focus:ring-1 focus:ring-blue-900"
+            className="bg-white border border-slate-300 rounded-lg px-3.5 py-2 text-slate-900 font-semibold focus:outline-none focus:ring-2 focus:ring-blue-900/20 shadow-2xs"
           >
             {bidders.map((b) => (
               <option key={b.id} value={b.id}>
@@ -615,14 +629,14 @@ export default function StatutoryVerificationPanel({
             type="date"
             value={asOfDate}
             onChange={(e) => setAsOfDate(e.target.value)}
-            className="bg-white border border-slate-300 rounded px-2.5 py-1 text-slate-900 focus:outline-none focus:ring-1 focus:ring-blue-900"
+            className="bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 font-medium focus:outline-none focus:ring-2 focus:ring-blue-900/20 shadow-2xs"
           />
         </div>
 
         <button
           onClick={handleVerify}
           disabled={loading || !selectedBidderId}
-          className="ml-auto inline-flex items-center space-x-2 px-4 py-2 bg-blue-900 hover:bg-blue-800 disabled:bg-slate-300 text-white font-semibold rounded transition shadow-xs"
+          className="ml-auto inline-flex items-center space-x-2 px-5 py-2.5 bg-[#0F2D5B] hover:bg-[#1A427D] disabled:bg-slate-300 text-white font-bold rounded-lg transition shadow-xs text-xs tracking-wide"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
           <span>{loading ? "Verifying Registers..." : "Run Statutory Verification"}</span>
@@ -630,7 +644,7 @@ export default function StatutoryVerificationPanel({
       </div>
 
       {error && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-md text-xs text-rose-700 flex items-center space-x-2">
+        <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center space-x-2">
           <AlertTriangle className="w-4 h-4 shrink-0" />
           <span>{error}</span>
         </div>
@@ -638,42 +652,46 @@ export default function StatutoryVerificationPanel({
 
       {/* Verification Results Cards */}
       {summary ? (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-500 px-1">
+        <div className="space-y-3.5">
+          <div className="flex items-center justify-between text-xs text-[#6B7C93] px-1 font-medium">
             <span>
               Verified {summary.total_sources} Authorities • {summary.successful_connections} Successful Connections
             </span>
-            <span>
+            <span className="font-mono text-[11px]">
               Retrieved at: {new Date(summary.verified_at).toLocaleTimeString()}
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {summary.results.map((r) => (
               <div
                 key={r.verification_id}
-                className="bg-white border border-slate-200 rounded-lg p-3.5 space-y-2.5 shadow-xs hover:border-slate-300 transition"
+                className="bg-white border border-slate-200/90 rounded-xl p-4 flex flex-col justify-between shadow-2xs hover:border-slate-300 hover:shadow-xs transition space-y-3"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5">
-                    {getAuthorityIcon(r.authority)}
-                    <span className="font-bold text-slate-900 text-xs">{r.authority}</span>
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-200/70 flex items-center justify-center shrink-0">
+                        {getAuthorityIcon(r.authority)}
+                      </div>
+                      <span className="font-bold text-[#0F2D5B] text-xs tracking-tight">{r.authority}</span>
+                    </div>
+                    {getConnectionBadge(r.connection_status)}
                   </div>
-                  {getConnectionBadge(r.connection_status)}
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] text-slate-500 font-medium truncate max-w-[170px]" title={r.source_name}>
+                      {r.source_name}
+                    </span>
+                    {getVerificationBadge(r.verification_status)}
+                  </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-slate-500 font-medium truncate max-w-[110px]" title={r.source_name}>
-                    {r.source_name}
-                  </span>
-                  {getVerificationBadge(r.verification_status)}
-                </div>
-
-                <div className="pt-2 border-t border-slate-100">
+                <div className="pt-2.5 pb-1 border-t border-slate-100 flex-1 flex flex-col justify-center min-h-[80px]">
                   {renderPayloadSummary(r)}
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400">
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
                   <span>Latency: {r.execution_time_ms}ms</span>
                   <span>Conf: {r.confidence_score.toFixed(1)}</span>
                 </div>
@@ -683,7 +701,7 @@ export default function StatutoryVerificationPanel({
         </div>
       ) : (
         /* Static / Baseline Preview before trigger */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {[
             { name: "GSTN", label: "Goods & Services Tax", key: "GSTIN", desc: "Turnover, filing status & active registration" },
             { name: "Udyam / MSME", label: "Ministry of MSME", key: "Udyam No.", desc: "Enterprise scale (Micro/Small/Medium)" },
@@ -697,20 +715,22 @@ export default function StatutoryVerificationPanel({
             { name: "NSIC", label: "National Small Industries", key: "SPRS Reg", desc: "Single Point Registration Scheme & monetary limit" },
             { name: "DigiLocker", label: "Document Provenance", key: "Doc URI", desc: "Cryptographic verification & digital signature audit" },
           ].map((item, idx) => (
-            <div key={idx} className="bg-slate-50/70 border border-slate-200 rounded-md p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-900 text-xs">{item.name}</span>
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/70 text-amber-900 border border-amber-200">
-                  MOCK
-                </span>
+            <div key={idx} className="bg-slate-50/70 border border-slate-200/90 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-bold text-[#0F2D5B] text-xs">{item.name}</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100/70 text-amber-900 border border-amber-200">
+                    MOCK
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 line-clamp-2 leading-snug">{item.desc}</p>
               </div>
-              <p className="text-[11px] text-slate-500 line-clamp-2 leading-snug">{item.desc}</p>
-              <div className="pt-2 border-t border-slate-200/80 text-[11px] space-y-1 text-slate-600">
-                <div className="flex justify-between">
+              <div className="pt-2.5 border-t border-slate-200/80 text-[11px] space-y-1 text-slate-600">
+                <div className="flex justify-between items-center">
                   <span className="text-slate-400">Primary Key:</span>
                   <span className="font-mono font-medium text-slate-800">{item.key}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="text-slate-400">Status:</span>
                   <span className="font-semibold text-emerald-700">Ready to Query</span>
                 </div>

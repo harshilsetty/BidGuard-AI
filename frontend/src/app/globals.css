@@ -3,13 +3,16 @@
 @tailwind utilities;
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #F5F8FB;
+  --foreground: #2B3A55;
+  --gov-navy: #0F2D5B;
+  --gov-blue: #1F4E9E;
+  --gov-border: #E9EEF5;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background-color: var(--background);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   min-height: 100vh;
 }

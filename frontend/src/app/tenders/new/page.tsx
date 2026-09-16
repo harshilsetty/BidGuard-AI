@@ -85,52 +85,52 @@ export default function NewTenderPage() {
   return (
     <div className="max-w-3xl mx-auto space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-slate-100">Upload GeM Tender Document</h2>
-        <p className="text-sm text-slate-400 mt-1">
+        <h2 className="text-2xl font-bold text-[#0F2D5B]">Upload GeM Tender Document</h2>
+        <p className="text-sm text-[#6B7C93] mt-1">
           Upload an official GeM Notice Inviting Tender (NIT) or RFP PDF. The platform will extract text using PyMuPDF and analyze compliance clauses using NVIDIA NIM GPT-OSS 20B.
         </p>
       </div>
 
       {error && (
-        <div className="p-4 bg-rose-950/50 border border-rose-800 rounded-xl flex items-start space-x-3 text-rose-300 text-sm">
-          <AlertCircle className="w-5 h-5 mt-0.5 text-rose-400 flex-shrink-0" />
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start space-x-3 text-[#DC3545] text-sm">
+          <AlertCircle className="w-5 h-5 mt-0.5 text-[#DC3545] flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {step !== "IDLE" ? (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-8 text-center space-y-4">
+        <div className="bg-white border border-[#E9EEF5] rounded-xl p-8 text-center space-y-4 shadow-xs">
           <div className="flex justify-center">
             {step === "DONE" ? (
-              <CheckCircle2 className="w-12 h-12 text-emerald-400 animate-bounce" />
+              <CheckCircle2 className="w-12 h-12 text-[#28A745] animate-bounce" />
             ) : (
-              <Loader2 className="w-12 h-12 text-blue-500 animate-spin" />
+              <Loader2 className="w-12 h-12 text-[#1F4E9E] animate-spin" />
             )}
           </div>
-          <h3 className="text-lg font-semibold text-slate-200">
+          <h3 className="text-lg font-bold text-[#0F2D5B]">
             {step === "UPLOADING" && "Ingesting Tender Document"}
             {step === "EXTRACTING" && "AI Clause Extraction in Progress"}
             {step === "DONE" && "Extraction Complete!"}
           </h3>
-          <p className="text-sm text-slate-400 max-w-md mx-auto">{progressMsg}</p>
-          <div className="w-full bg-slate-800 rounded-full h-2 max-w-md mx-auto overflow-hidden">
+          <p className="text-sm text-[#6B7C93] max-w-md mx-auto">{progressMsg}</p>
+          <div className="w-full bg-[#E9EEF5] rounded-full h-2 max-w-md mx-auto overflow-hidden">
             <div
               className={`h-full transition-all duration-500 ${
                 step === "UPLOADING"
-                  ? "w-1/3 bg-blue-500"
+                  ? "w-1/3 bg-[#1F4E9E]"
                   : step === "EXTRACTING"
-                  ? "w-4/5 bg-indigo-500"
-                  : "w-full bg-emerald-500"
+                  ? "w-4/5 bg-[#2E73D6]"
+                  : "w-full bg-[#28A745]"
               }`}
             />
           </div>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="bg-white border border-[#E9EEF5] rounded-xl p-6 sm:p-8 space-y-5 shadow-xs">
             {/* Title Input */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#2B3A55] mb-1.5">
                 Tender Title *
               </label>
               <input
@@ -139,13 +139,13 @@ export default function NewTenderPage() {
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="e.g. Procurement of Server Infrastructure and High-Performance Storage"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-white border border-[#E9EEF5] focus:border-[#1F4E9E] rounded-lg px-3.5 py-2.5 text-sm text-[#2B3A55] placeholder-slate-400 focus:outline-none transition shadow-2xs"
               />
             </div>
 
             {/* GeM Tender ID Input */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#2B3A55] mb-1.5">
                 GeM Bid / NIT Reference Number (Optional)
               </label>
               <input
@@ -153,20 +153,20 @@ export default function NewTenderPage() {
                 value={gemTenderId}
                 onChange={(e) => setGemTenderId(e.target.value)}
                 placeholder="e.g. GEM/2026/B/492104"
-                className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 transition"
+                className="w-full bg-white border border-[#E9EEF5] focus:border-[#1F4E9E] rounded-lg px-3.5 py-2.5 text-sm text-[#2B3A55] placeholder-slate-400 focus:outline-none transition shadow-2xs"
               />
             </div>
 
             {/* Drag and Drop Zone */}
             <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-[#2B3A55] mb-2">
                 Tender PDF File *
               </label>
               <div
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-blue-500 bg-slate-950/60 rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-3"
+                className="border-2 border-dashed border-[#2E73D6]/40 hover:border-[#1F4E9E] bg-[#F5F8FB] rounded-xl p-8 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-3"
               >
                 <input
                   ref={fileInputRef}
@@ -175,23 +175,23 @@ export default function NewTenderPage() {
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="h-12 w-12 rounded-full bg-blue-950/60 border border-blue-800/60 flex items-center justify-center text-blue-400">
+                <div className="h-12 w-12 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1F4E9E]">
                   <UploadCloud className="w-6 h-6" />
                 </div>
                 {file ? (
-                  <div className="flex items-center space-x-2 text-sm text-emerald-400 font-medium">
+                  <div className="flex items-center space-x-2 text-sm text-[#28A745] font-semibold">
                     <FileText className="w-4 h-4" />
                     <span>{file.name}</span>
-                    <span className="text-slate-500 text-xs">
+                    <span className="text-[#6B7C93] text-xs">
                       ({(file.size / (1024 * 1024)).toFixed(2)} MB)
                     </span>
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm text-slate-300 font-medium">
+                    <p className="text-sm text-[#2B3A55] font-medium">
                       Click to upload or drag & drop Tender PDF
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-[#6B7C93]">
                       Standard GeM NIT / Technical Specification document (PDF up to 50MB)
                     </p>
                   </>
@@ -204,14 +204,14 @@ export default function NewTenderPage() {
             <button
               type="button"
               onClick={() => router.push("/")}
-              className="px-4 py-2 rounded-lg text-sm text-slate-400 hover:text-slate-200 transition"
+              className="px-4 py-2 rounded-lg text-sm text-[#6B7C93] hover:text-[#2B3A55] transition"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!file || !title.trim()}
-              className="inline-flex items-center space-x-2 px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-sm font-medium transition shadow-md shadow-blue-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center space-x-2 px-6 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-sm font-semibold transition shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span>Ingest & Extract Clauses</span>
               <ArrowRight className="w-4 h-4" />
