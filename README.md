@@ -831,4 +831,5 @@ BidGuard AI is built around one principle:
   <em>Team BidGuard</em>
 </p>
 #   B i d G u a r d - A I  
+ #   B i d G u a r d - A I  
  
