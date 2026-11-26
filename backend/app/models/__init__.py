@@ -4,7 +4,16 @@ from app.models.user import User
 from app.models.rbac import Role, Permission, RolePermission, UserRole
 from app.models.auth import RefreshToken, OrganizationInvitation
 from app.models.audit import AuditLog, RecommendationAuditRecord
-from app.models.tender import Tender, TenderDocument, TenderDocumentPage, TenderProcessingJob
+from app.models.tender import (
+    Tender,
+    TenderDocument,
+    TenderDocumentPage,
+    TenderProcessingJob,
+    TenderRequirement,
+    TenderRequirementSource,
+    TenderRequirementConflict,
+    TenderRequirementEvidence,
+)
 from app.models.clause import TenderClause
 from app.models.bidder import Bidder, BidDocument
 from app.models.chunk import DocumentChunk

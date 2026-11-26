@@ -18,7 +18,16 @@ from app.api.deps import (
 )
 from app.models.audit import AuditLog
 from app.models.user import User
-from app.models.tender import Tender, TenderDocument, TenderDocumentPage, TenderProcessingJob
+from app.models.tender import (
+    Tender,
+    TenderDocument,
+    TenderDocumentPage,
+    TenderProcessingJob,
+    TenderRequirement,
+    TenderRequirementSource,
+    TenderRequirementConflict,
+    TenderRequirementEvidence,
+)
 from app.models.clause import TenderClause
 from app.schemas.tender import (
     TenderResponse,
@@ -28,7 +37,20 @@ from app.schemas.tender import (
     TenderDocumentPagesListResponse,
     TenderProcessingJobResponse,
     ExtractionResultResponse,
+    TenderRequirementResponse,
+    TenderRequirementsListResponse,
+    TenderRequirementSourceResponse,
+    TenderRequirementProvenanceResponse,
+    TenderRequirementConflictResponse,
+    TenderRequirementConflictDetailResponse,
+    TenderRequirementConflictsListResponse,
+    ConflictDetectionRunResponse,
+    TenderRequirementEvidenceResponse,
+    TenderRequirementEvidenceListResponse,
 )
+from app.services.requirement_provenance_service import TenderRequirementProvenanceService
+from app.services.requirement_conflict_service import TenderRequirementConflictService
+from app.services.requirement_evidence_service import TenderRequirementEvidenceService
 from app.schemas.clause import (
     ClauseResponse,
     ClauseCreateRequest,
@@ -517,6 +539,195 @@ async def get_tender_document_metadata(
     return TenderDocumentResponse.model_validate(doc_record)
 
 
+@router.post(
+    "/{tender_id}/documents/{document_id}/extract-requirements",
+    response_model=TenderProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_requirement_extraction(
+    tender_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Enqueue an asynchronous TenderLens requirement-extraction job for a processed document."""
+    await get_authorized_tender(tender_id, current_user, db)
+    doc_record = (
+        await db.execute(
+            select(TenderDocument).where(
+                TenderDocument.id == document_id,
+                TenderDocument.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not doc_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender document not found.")
+
+    if doc_record.processing_status != "READY":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document page extraction must complete (READY) before requirement extraction.",
+        )
+
+    page_count = (
+        await db.execute(
+            select(func.count(TenderDocumentPage.id)).where(
+                TenderDocumentPage.tender_document_id == document_id
+            )
+        )
+    ).scalar() or 0
+    if page_count == 0:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No extracted pages are available for requirement extraction.",
+        )
+
+    existing_active = (
+        await db.execute(
+            select(TenderProcessingJob)
+            .where(
+                TenderProcessingJob.tender_document_id == document_id,
+                TenderProcessingJob.job_type == "REQUIREMENT_EXTRACTION",
+                TenderProcessingJob.status.in_(ACTIVE_JOB_STATUSES),
+            )
+            .order_by(TenderProcessingJob.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing_active:
+        worker_manager.notify()
+        return TenderProcessingJobResponse.model_validate(existing_active)
+
+    max_ver = (
+        await db.execute(
+            select(func.max(TenderProcessingJob.extraction_version)).where(
+                TenderProcessingJob.tender_document_id == document_id,
+                TenderProcessingJob.job_type == "REQUIREMENT_EXTRACTION",
+            )
+        )
+    ).scalar()
+    next_version = int(max_ver or 0) + 1
+    idem_key = f"REQUIREMENT_EXTRACTION:{document_id}:v{next_version}"
+
+    job = TenderProcessingJob(
+        tender_id=tender_id,
+        tender_document_id=document_id,
+        job_type="REQUIREMENT_EXTRACTION",
+        status="QUEUED",
+        idempotency_key=idem_key,
+        extraction_version=next_version,
+        extracted_count=0,
+        retry_count=0,
+        max_retries=settings.JOB_DEFAULT_MAX_RETRIES,
+        progress_pct=0,
+        current_stage="QUEUED",
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    worker_manager.notify()
+    return TenderProcessingJobResponse.model_validate(job)
+
+
+@router.get("/{tender_id}/requirement-jobs/{job_id}", response_model=TenderProcessingJobResponse)
+async def get_requirement_extraction_job_status(
+    tender_id: UUID,
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Fetch status, progress, extracted_count, and sanitized error state for a requirement-extraction job."""
+    await get_authorized_tender(tender_id, current_user, db)
+    job = (
+        await db.execute(
+            select(TenderProcessingJob).where(
+                TenderProcessingJob.id == job_id,
+                TenderProcessingJob.tender_id == tender_id,
+                TenderProcessingJob.job_type == "REQUIREMENT_EXTRACTION",
+            )
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Requirement extraction job not found.")
+    return TenderProcessingJobResponse.model_validate(job)
+
+
+@router.get("/{tender_id}/requirements", response_model=TenderRequirementsListResponse)
+async def list_tender_requirements(
+    tender_id: UUID,
+    primary_category: Optional[str] = Query(None),
+    mandatory_status: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None),
+    source_document_id: Optional[UUID] = Query(None),
+    extraction_version: Optional[int] = Query(None, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """List extracted TenderLens requirements with pagination and taxonomy/review filters."""
+    await get_authorized_tender(tender_id, current_user, db)
+    conditions = [TenderRequirement.tender_id == tender_id]
+    if primary_category:
+        conditions.append(TenderRequirement.primary_category == primary_category.strip().upper())
+    if mandatory_status:
+        conditions.append(TenderRequirement.mandatory_status == mandatory_status.strip().upper())
+    if review_status:
+        conditions.append(TenderRequirement.review_status == review_status.strip().upper())
+    if source_document_id:
+        conditions.append(TenderRequirement.source_document_id == source_document_id)
+    if extraction_version is not None:
+        conditions.append(TenderRequirement.extraction_version == extraction_version)
+
+    total = (
+        await db.execute(select(func.count(TenderRequirement.id)).where(*conditions))
+    ).scalar() or 0
+
+    rows = (
+        await db.execute(
+            select(TenderRequirement)
+            .where(*conditions)
+            .order_by(
+                TenderRequirement.extraction_version.desc(),
+                TenderRequirement.source_page_number.asc(),
+                TenderRequirement.requirement_code.asc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+
+    return TenderRequirementsListResponse(
+        tender_id=tender_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[TenderRequirementResponse.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/{tender_id}/requirements/{requirement_id}", response_model=TenderRequirementResponse)
+async def get_tender_requirement_detail(
+    tender_id: UUID,
+    requirement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Retrieve full structured detail and source grounding for a single requirement."""
+    await get_authorized_tender(tender_id, current_user, db)
+    row = (
+        await db.execute(
+            select(TenderRequirement).where(
+                TenderRequirement.id == requirement_id,
+                TenderRequirement.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender requirement not found.")
+    return TenderRequirementResponse.model_validate(row)
+
+
 @router.post("/{tender_id}/extract", response_model=ExtractionResultResponse)
 async def extract_tender_clauses(
     tender_id: UUID,
@@ -830,4 +1041,233 @@ async def confirm_tender_clauses(
         created_at=tender.created_at,
         updated_at=tender.updated_at,
         clauses=[ClauseResponse.model_validate(c) for c in sorted(tender.clauses, key=lambda x: x.clause_code)]
+    )
+
+
+# ==============================================================================
+# Phase 2.0D: Requirement Provenance, Conflict Detection & Evidence Mapping
+# ==============================================================================
+
+
+@router.get(
+    "/{tender_id}/requirements/{requirement_id}/provenance",
+    response_model=TenderRequirementProvenanceResponse,
+)
+async def get_requirement_provenance(
+    tender_id: UUID,
+    requirement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Verify and return full source provenance and supporting passages for a requirement."""
+    await get_authorized_tender(tender_id, current_user, db)
+    svc = TenderRequirementProvenanceService()
+    try:
+        res = await svc.verify_and_get_provenance(db, tender_id, requirement_id, persist_status=True)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender requirement not found.")
+    await db.commit()
+
+    req: TenderRequirement = res["requirement"]
+    doc: Optional[TenderDocument] = res["source_document"]
+    return TenderRequirementProvenanceResponse(
+        requirement_id=req.id,
+        tender_id=req.tender_id,
+        source_document_id=req.source_document_id,
+        source_document_name=doc.original_filename if doc else None,
+        source_document_role=doc.document_role if doc else None,
+        source_page_number=req.source_page_number,
+        source_page_range=req.source_page_range,
+        source_section=req.source_section,
+        source_text=req.source_text,
+        normalized_statement=req.normalized_statement,
+        extraction_version=req.extraction_version,
+        source_document_sha256=req.source_document_sha256 or (doc.sha256_hash if doc else None),
+        verification_status=res["verification_status"],
+        matched_page_number=res["matched_page_number"],
+        verification_detail=res["verification_detail"],
+        supporting_sources=[
+            TenderRequirementSourceResponse.model_validate(s) for s in res["supporting_sources"]
+        ],
+    )
+
+
+@router.post("/{tender_id}/detect-conflicts", response_model=ConflictDetectionRunResponse)
+async def detect_tender_conflicts(
+    tender_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Run deterministic scope-aware cross-document conflict and potential-amendment detection."""
+    await get_authorized_tender(tender_id, current_user, db)
+    svc = TenderRequirementConflictService()
+    conflicts = await svc.detect_conflicts(db, tender_id)
+    await db.commit()
+    return ConflictDetectionRunResponse(
+        tender_id=tender_id,
+        detected_count=len(conflicts),
+        conflicts=[TenderRequirementConflictResponse.model_validate(c) for c in conflicts],
+    )
+
+
+@router.get("/{tender_id}/conflicts", response_model=TenderRequirementConflictsListResponse)
+async def list_tender_conflicts(
+    tender_id: UUID,
+    conflict_type: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    conflict_status: Optional[str] = Query(None, alias="status"),
+    source_document_id: Optional[UUID] = Query(None),
+    category: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """List detected cross-document conflicts with pagination and filtering."""
+    await get_authorized_tender(tender_id, current_user, db)
+    conditions = [TenderRequirementConflict.tender_id == tender_id]
+    if conflict_type:
+        conditions.append(TenderRequirementConflict.conflict_type == conflict_type.strip().upper())
+    if severity:
+        conditions.append(TenderRequirementConflict.severity == severity.strip().upper())
+    if conflict_status:
+        conditions.append(TenderRequirementConflict.status == conflict_status.strip().upper())
+
+    if source_document_id or category:
+        req_sub_conds = [TenderRequirement.tender_id == tender_id]
+        if source_document_id:
+            req_sub_conds.append(TenderRequirement.source_document_id == source_document_id)
+        if category:
+            req_sub_conds.append(TenderRequirement.primary_category == category.strip().upper())
+        matching_req_ids = select(TenderRequirement.id).where(*req_sub_conds)
+        conditions.append(
+            or_(
+                TenderRequirementConflict.requirement_a_id.in_(matching_req_ids),
+                TenderRequirementConflict.requirement_b_id.in_(matching_req_ids),
+            )
+        )
+
+    total = (
+        await db.execute(select(func.count(TenderRequirementConflict.id)).where(*conditions))
+    ).scalar() or 0
+
+    rows = (
+        await db.execute(
+            select(TenderRequirementConflict)
+            .where(*conditions)
+            .order_by(TenderRequirementConflict.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+
+    return TenderRequirementConflictsListResponse(
+        tender_id=tender_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[TenderRequirementConflictResponse.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/{tender_id}/conflicts/{conflict_id}", response_model=TenderRequirementConflictDetailResponse)
+async def get_tender_conflict_detail(
+    tender_id: UUID,
+    conflict_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Retrieve conflict detail with both source requirement records."""
+    await get_authorized_tender(tender_id, current_user, db)
+    conflict = (
+        await db.execute(
+            select(TenderRequirementConflict).where(
+                TenderRequirementConflict.id == conflict_id,
+                TenderRequirementConflict.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not conflict:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender conflict not found.")
+
+    req_a = (
+        await db.execute(select(TenderRequirement).where(TenderRequirement.id == conflict.requirement_a_id))
+    ).scalar_one_or_none()
+    req_b = (
+        await db.execute(select(TenderRequirement).where(TenderRequirement.id == conflict.requirement_b_id))
+    ).scalar_one_or_none()
+
+    base = TenderRequirementConflictResponse.model_validate(conflict).model_dump()
+    return TenderRequirementConflictDetailResponse(
+        **base,
+        requirement_a=TenderRequirementResponse.model_validate(req_a) if req_a else None,
+        requirement_b=TenderRequirementResponse.model_validate(req_b) if req_b else None,
+    )
+
+
+@router.get(
+    "/{tender_id}/requirements/{requirement_id}/evidence-mappings",
+    response_model=TenderRequirementEvidenceListResponse,
+)
+async def get_requirement_evidence_mappings(
+    tender_id: UUID,
+    requirement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """List expected bidder evidence mappings for a tender requirement."""
+    await get_authorized_tender(tender_id, current_user, db)
+    req = (
+        await db.execute(
+            select(TenderRequirement).where(
+                TenderRequirement.id == requirement_id,
+                TenderRequirement.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender requirement not found.")
+
+    rows = (
+        await db.execute(
+            select(TenderRequirementEvidence)
+            .where(
+                TenderRequirementEvidence.requirement_id == requirement_id,
+                TenderRequirementEvidence.tender_id == tender_id,
+            )
+            .order_by(TenderRequirementEvidence.created_at.asc())
+        )
+    ).scalars().all()
+
+    return TenderRequirementEvidenceListResponse(
+        tender_id=tender_id,
+        requirement_id=requirement_id,
+        total=len(rows),
+        items=[TenderRequirementEvidenceResponse.model_validate(r) for r in rows],
+    )
+
+
+@router.post(
+    "/{tender_id}/requirements/{requirement_id}/generate-evidence-mappings",
+    response_model=TenderRequirementEvidenceListResponse,
+)
+async def generate_requirement_evidence_mappings(
+    tender_id: UUID,
+    requirement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Generate source-grounded expected evidence mappings for a tender requirement."""
+    await get_authorized_tender(tender_id, current_user, db)
+    svc = TenderRequirementEvidenceService()
+    try:
+        rows = await svc.generate_for_requirement(db, tender_id, requirement_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender requirement not found.")
+    await db.commit()
+    return TenderRequirementEvidenceListResponse(
+        tender_id=tender_id,
+        requirement_id=requirement_id,
+        total=len(rows),
+        items=[TenderRequirementEvidenceResponse.model_validate(r) for r in rows],
     )

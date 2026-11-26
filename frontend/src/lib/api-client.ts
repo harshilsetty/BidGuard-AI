@@ -912,3 +912,114 @@ export async function fetchTenderDocumentPages(
     "Failed to load extracted pages"
   );
 }
+
+// ====================================================
+// Phase 2.0C TenderLens Requirement Intelligence APIs
+// ====================================================
+
+export async function extractDocumentRequirements(
+  tenderId: string,
+  documentId: string
+): Promise<TenderProcessingJob> {
+  return apiFetch<TenderProcessingJob>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents/${encodeURIComponent(documentId)}/extract-requirements`,
+    { method: "POST" },
+    "Failed to enqueue requirement extraction"
+  );
+}
+
+export async function fetchRequirementJobStatus(
+  tenderId: string,
+  jobId: string
+): Promise<TenderProcessingJob> {
+  return apiFetch<TenderProcessingJob>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/requirement-jobs/${encodeURIComponent(jobId)}`,
+    { cache: "no-store" },
+    "Failed to load requirement extraction job status"
+  );
+}
+
+export async function fetchTenderRequirements(
+  tenderId: string,
+  params?: {
+    primary_category?: string;
+    mandatory_status?: string;
+    review_status?: string;
+    source_document_id?: string;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<import("./types").TenderRequirementsListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.primary_category) qs.set("primary_category", params.primary_category);
+  if (params?.mandatory_status) qs.set("mandatory_status", params.mandatory_status);
+  if (params?.review_status) qs.set("review_status", params.review_status);
+  if (params?.source_document_id) qs.set("source_document_id", params.source_document_id);
+  qs.set("limit", String(params?.limit ?? 100));
+  qs.set("offset", String(params?.offset ?? 0));
+
+  return apiFetch<import("./types").TenderRequirementsListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/requirements?${qs.toString()}`,
+    { cache: "no-store" },
+    "Failed to load extracted tender requirements"
+  );
+}
+
+// ====================================================
+// Phase 2.0D Provenance, Conflict & Evidence APIs
+// ====================================================
+
+export async function fetchRequirementProvenance(
+  tenderId: string,
+  requirementId: string
+): Promise<import("./types").TenderRequirementProvenance> {
+  return apiFetch<import("./types").TenderRequirementProvenance>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/requirements/${encodeURIComponent(requirementId)}/provenance`,
+    { cache: "no-store" },
+    "Failed to verify requirement provenance"
+  );
+}
+
+export async function detectTenderConflicts(
+  tenderId: string
+): Promise<import("./types").ConflictDetectionRunResponse> {
+  return apiFetch<import("./types").ConflictDetectionRunResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/detect-conflicts`,
+    { method: "POST" },
+    "Failed to detect cross-document conflicts"
+  );
+}
+
+export async function fetchTenderConflicts(
+  tenderId: string,
+  limit = 50,
+  offset = 0
+): Promise<import("./types").TenderRequirementConflictsListResponse> {
+  return apiFetch<import("./types").TenderRequirementConflictsListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/conflicts?limit=${limit}&offset=${offset}`,
+    { cache: "no-store" },
+    "Failed to load tender conflicts"
+  );
+}
+
+export async function fetchRequirementEvidenceMappings(
+  tenderId: string,
+  requirementId: string
+): Promise<import("./types").TenderRequirementEvidenceListResponse> {
+  return apiFetch<import("./types").TenderRequirementEvidenceListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/requirements/${encodeURIComponent(requirementId)}/evidence-mappings`,
+    { cache: "no-store" },
+    "Failed to load evidence mappings"
+  );
+}
+
+export async function generateRequirementEvidenceMappings(
+  tenderId: string,
+  requirementId: string
+): Promise<import("./types").TenderRequirementEvidenceListResponse> {
+  return apiFetch<import("./types").TenderRequirementEvidenceListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/requirements/${encodeURIComponent(requirementId)}/generate-evidence-mappings`,
+    { method: "POST" },
+    "Failed to generate evidence mappings"
+  );
+}

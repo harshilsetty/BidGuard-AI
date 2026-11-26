@@ -753,6 +753,8 @@ export interface TenderProcessingJob {
   progress_pct: number;
   retry_count: number;
   max_retries: number;
+  extracted_count?: number;
+  extraction_version?: number;
   error_code?: string | null;
   error_message?: string | null;
   started_at?: string | null;
@@ -793,4 +795,158 @@ export interface TenderDocument {
   created_at: string;
   updated_at: string;
   latest_job?: TenderProcessingJob | null;
+}
+
+// ====================================================
+// Phase 2.0C TenderLens Requirement Intelligence Types
+// ====================================================
+
+export type RequirementCategoryCode =
+  | "ELIG"
+  | "TECH"
+  | "FIN"
+  | "STAT"
+  | "EXP"
+  | "DOC"
+  | "DEL"
+  | "SUB"
+  | "DATE"
+  | "PREF"
+  | "UNCLASSIFIED";
+
+export type RequirementMandatoryStatus = "MANDATORY" | "OPTIONAL" | "UNCLEAR";
+export type RequirementReviewStatus =
+  | "DRAFT"
+  | "CONFIRMED"
+  | "REJECTED"
+  | "NEEDS_REVIEW"
+  | "SUPERSEDED";
+
+export interface TenderRequirement {
+  id: string;
+  tender_id: string;
+  source_document_id: string;
+  processing_job_id?: string | null;
+  requirement_code: string;
+  extraction_version: number;
+  source_page_number: number;
+  source_page_range?: string | null;
+  source_section?: string | null;
+  source_text: string;
+  source_quote_verified: boolean;
+  normalized_statement: string;
+  explanatory_interpretation: string;
+  primary_category: RequirementCategoryCode;
+  secondary_categories: string[];
+  requirement_type: string;
+  mandatory_status: RequirementMandatoryStatus;
+  expected_document_or_evidence?: string | null;
+  expected_action_by_bidder?: string | null;
+  numeric_value?: string | null;
+  unit?: string | null;
+  currency?: string | null;
+  period_or_validity?: string | null;
+  conditions_and_exceptions?: string | null;
+  extraction_method: string;
+  model_provider: string;
+  model_version?: string | null;
+  extraction_confidence: number;
+  review_status: RequirementReviewStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenderRequirementsListResponse {
+  tender_id: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TenderRequirement[];
+}
+
+// ====================================================
+// Phase 2.0D Provenance, Conflict & Evidence Types
+// ====================================================
+
+export interface TenderRequirementSource {
+  id: string;
+  requirement_id: string;
+  source_document_id: string;
+  source_role: string;
+  source_page_number: number;
+  source_section?: string | null;
+  source_text: string;
+  verification_status: string;
+  source_document_sha256?: string | null;
+}
+
+export interface TenderRequirementProvenance {
+  requirement_id: string;
+  tender_id: string;
+  source_document_id: string;
+  source_document_name?: string | null;
+  source_document_role?: string | null;
+  source_page_number: number;
+  source_page_range?: string | null;
+  source_section?: string | null;
+  source_text: string;
+  normalized_statement: string;
+  extraction_version: number;
+  source_document_sha256?: string | null;
+  verification_status: string;
+  matched_page_number?: number | null;
+  verification_detail: string;
+  supporting_sources: TenderRequirementSource[];
+}
+
+export interface TenderRequirementConflict {
+  id: string;
+  tender_id: string;
+  requirement_a_id: string;
+  requirement_b_id: string;
+  conflict_type: string;
+  relationship_type: string;
+  severity: string;
+  status: string;
+  scope_summary?: string | null;
+  explanation: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenderRequirementConflictsListResponse {
+  tender_id: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TenderRequirementConflict[];
+}
+
+export interface ConflictDetectionRunResponse {
+  tender_id: string;
+  detected_count: number;
+  conflicts: TenderRequirementConflict[];
+}
+
+export interface TenderRequirementEvidence {
+  id: string;
+  tender_id: string;
+  requirement_id: string;
+  evidence_type: string;
+  expected_document_name: string;
+  evidence_purpose: string;
+  is_mandatory: boolean;
+  source_passage: string;
+  mapping_method: string;
+  confidence: number;
+  mapping_status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenderRequirementEvidenceListResponse {
+  tender_id: string;
+  requirement_id: string;
+  total: number;
+  items: TenderRequirementEvidence[];
 }
