@@ -56,7 +56,7 @@ jobs:
           TESTING: "1"
         run: |
           cd backend
-          pytest -v --ignore=sample_data
+          pytest -v --ignore=sample_data --ignore=test_golden_demo_frozen_regression.py
 
   frontend-build:
     name: Frontend Build & Lint

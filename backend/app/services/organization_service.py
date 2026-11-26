@@ -412,7 +412,16 @@ class OrganizationService:
                 diff_json={"email": target.email, "roles": current_roles},
             )
         )
-        await db.delete(target)
+        # Detach from organization, revoke roles/sessions, and deactivate without hard-deleting
+        # so append-only audit_logs foreign key references remain intact.
+        await db.execute(delete(UserRole).where(UserRole.user_id == target.id))
+        await db.execute(
+            update(RefreshToken)
+            .where(RefreshToken.user_id == target.id, RefreshToken.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(timezone.utc))
+        )
+        target.email = f"removed-{target.id}@removed.local"
+        target.is_active = False
         await db.commit()
 
     @classmethod
