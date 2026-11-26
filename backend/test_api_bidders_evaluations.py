@@ -15,6 +15,7 @@ from app.models.clause import TenderClause
 from app.models.bidder import Bidder, BidDocument
 from app.models.chunk import DocumentChunk
 from app.models.evaluation import ComplianceEvaluation
+from tests_auth_helper import create_test_officer_and_headers
 
 # 11 Structured GeM Tender Clauses matching Day 4 benchmark
 BENCHMARK_CLAUSES = [
@@ -199,8 +200,13 @@ def setup_database():
             pass
 
 
-async def _create_test_tender_with_clauses(session: AsyncSession, title: str = "Enterprise Server Procurement") -> Tender:
+async def _create_test_tender_with_clauses(
+    session: AsyncSession,
+    title: str = "Enterprise Server Procurement",
+    organization_id=None,
+) -> Tender:
     tender = Tender(
+        organization_id=organization_id,
         title=title,
         gem_tender_id="GEM/2026/B/8912450",
         file_name="tender_document.pdf",
@@ -245,8 +251,10 @@ async def test_01_full_api_vertical_slice_lifecycle():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         # 1. Create tender in DB
         async with TestSessionLocal() as session:
-            tender = await _create_test_tender_with_clauses(session, "Lifecycle Test Tender")
+            org, _, headers = await create_test_officer_and_headers(session)
+            tender = await _create_test_tender_with_clauses(session, "Lifecycle Test Tender", organization_id=org.id)
             tender_id = tender.id
+        client.headers.update(headers)
 
         # 2. POST demo bidders
         resp_bidders = await client.post(f"/api/v1/tenders/{tender_id}/bidders/demo")
@@ -321,8 +329,10 @@ async def test_02_demo_bidders_idempotency():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with TestSessionLocal() as session:
-            tender = await _create_test_tender_with_clauses(session, "Idempotency Test Tender")
+            org, _, headers = await create_test_officer_and_headers(session)
+            tender = await _create_test_tender_with_clauses(session, "Idempotency Test Tender", organization_id=org.id)
             tender_id = tender.id
+        client.headers.update(headers)
 
         # First load
         resp1 = await client.post(f"/api/v1/tenders/{tender_id}/bidders/demo")
@@ -375,8 +385,10 @@ async def test_03_officer_override_preservation_regression():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with TestSessionLocal() as session:
-            tender = await _create_test_tender_with_clauses(session, "Override Preservation Tender")
+            org, _, headers = await create_test_officer_and_headers(session)
+            tender = await _create_test_tender_with_clauses(session, "Override Preservation Tender", organization_id=org.id)
             tender_id = tender.id
+        client.headers.update(headers)
 
         # 1. Load bidders & evaluate
         await client.post(f"/api/v1/tenders/{tender_id}/bidders/demo")
@@ -425,8 +437,10 @@ async def test_04_officer_override_requires_non_empty_justification():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with TestSessionLocal() as session:
-            tender = await _create_test_tender_with_clauses(session, "Justification Validation Tender")
+            org, _, headers = await create_test_officer_and_headers(session)
+            tender = await _create_test_tender_with_clauses(session, "Justification Validation Tender", organization_id=org.id)
             tender_id = tender.id
+        client.headers.update(headers)
 
         await client.post(f"/api/v1/tenders/{tender_id}/bidders/demo")
         await client.post(f"/api/v1/tenders/{tender_id}/evaluations/run", json={"use_live_llm": False})
@@ -466,10 +480,32 @@ async def test_05_tender_and_bidder_boundary_isolation():
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         # Create Tender 1 and Tender 2
         async with TestSessionLocal() as session:
-            tender1 = await _create_test_tender_with_clauses(session, "Tender 1 - Ministry IT")
-            tender2 = await _create_test_tender_with_clauses(session, "Tender 2 - Railway Telecom")
+            org, _, headers = await create_test_officer_and_headers(session)
+            from app.models.rbac import Role, UserRole
+            from app.core.security import create_access_token, hash_password
+            from app.models.user import User
+            from app.services.rbac_service import RBACService
+            admin_user = User(
+                email=f"admin_{uuid.uuid4().hex[:6]}@test.local",
+                password_hash=hash_password("TestAdmin123!"),
+                full_name="Test Admin",
+                organization_id=org.id,
+                is_active=True,
+                is_verified=True,
+            )
+            session.add(admin_user)
+            await session.flush()
+            admin_role = (await session.execute(select(Role).where(Role.name == "SUPER_ADMIN"))).scalar_one()
+            session.add(UserRole(user_id=admin_user.id, role_id=admin_role.id, organization_id=None))
+            await session.flush()
+            a_roles, a_perms = await RBACService.get_user_roles_and_permissions(admin_user.id, session)
+            admin_headers = {"Authorization": f"Bearer {create_access_token(str(admin_user.id), str(org.id), a_roles, a_perms)}"}
+
+            tender1 = await _create_test_tender_with_clauses(session, "Tender 1 - Ministry IT", organization_id=org.id)
+            tender2 = await _create_test_tender_with_clauses(session, "Tender 2 - Railway Telecom", organization_id=org.id)
             t1_id = tender1.id
             t2_id = tender2.id
+        client.headers.update(headers)
 
         # Load demo bidders on Tender 1
         await client.post(f"/api/v1/tenders/{t1_id}/bidders/demo")
@@ -486,8 +522,8 @@ async def test_05_tender_and_bidder_boundary_isolation():
         resp_cross_bidder = await client.get(f"/api/v1/tenders/{t2_id}/bidders/{b1_id}")
         assert resp_cross_bidder.status_code == 404
 
-        # Attempt to delete Tender 1's bidder through Tender 2
-        resp_cross_del = await client.delete(f"/api/v1/tenders/{t2_id}/bidders/{b1_id}")
+        # Attempt to delete Tender 1's bidder through Tender 2 (using ORG_ADMIN who holds tender:delete)
+        resp_cross_del = await client.delete(f"/api/v1/tenders/{t2_id}/bidders/{b1_id}", headers=admin_headers)
         assert resp_cross_del.status_code == 404
 
         # Attempt to access Tender 1's evaluation through Tender 2
@@ -513,8 +549,10 @@ async def test_06_day4_regressions_via_api():
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         async with TestSessionLocal() as session:
-            tender = await _create_test_tender_with_clauses(session, "Benchmark Verification Tender")
+            org, _, headers = await create_test_officer_and_headers(session)
+            tender = await _create_test_tender_with_clauses(session, "Benchmark Verification Tender", organization_id=org.id)
             tender_id = tender.id
+        client.headers.update(headers)
 
         await client.post(f"/api/v1/tenders/{tender_id}/bidders/demo")
         eval_resp = await client.post(

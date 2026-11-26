@@ -1,58 +1,181 @@
 import {
-  SystemHealth,
-  NvidiaHealth,
-  Tender,
-  TenderClause,
-  ClauseCreateInput,
-  ClauseUpdateInput,
-  Bidder,
-  DemoBiddersLoadResponse,
-  ComplianceMatrixResponse,
-  EvaluationDetailResponse,
-  OfficerOverrideRequest,
-  EvaluationRunRequest,
-  EvaluationRunResponse,
-  BidderComplianceScore,
-  TenderBidderRankingResponse,
+  clearAccessToken,
+  getAccessToken,
+  isAccessTokenExpiringSoon,
+  notifySessionExpired,
+  runSingleFlightRefresh,
+} from "./auth-store";
+import type {
   AIRecommendationResponse,
-  OfficerReviewRequest,
   AuditRecordItem,
   AuditTrailResponse,
-  StatutoryVerificationQuery,
-  BidderStatutoryVerificationSummary,
+  Bidder,
+  BidderComplianceScore,
+  ClauseCreateInput,
+  ClauseUpdateInput,
+  ComplianceMatrixResponse,
+  DemoBiddersLoadResponse,
+  EvaluationDetailResponse,
+  EvaluationRunRequest,
+  EvaluationRunResponse,
+  NvidiaHealth,
+  OfficerBidderVerificationSummary,
+  OfficerOverrideRequest,
+  OfficerReviewQueueResponse,
+  OfficerReviewRequest,
   SourceVerificationResult,
   StatutoryAdapterInfo,
-  OfficerBidderVerificationSummary,
+  StatutoryVerificationQuery,
+  BidderStatutoryVerificationSummary,
+  SystemHealth,
+  Tender,
+  TenderBidderRankingResponse,
+  TenderClause,
+  TokenResponse,
   VerificationHistoryResponse,
-  OfficerReviewQueueResponse,
 } from "./types";
 
-
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL !== undefined
     ? process.env.NEXT_PUBLIC_API_URL
-    : (process.env.NEXT_PUBLIC_API_BASE_URL !== undefined
-        ? process.env.NEXT_PUBLIC_API_BASE_URL
-        : "http://localhost:8000");
+    : process.env.NEXT_PUBLIC_API_BASE_URL !== undefined
+      ? process.env.NEXT_PUBLIC_API_BASE_URL
+      : "http://localhost:8000";
+
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+interface ApiFetchOptions extends RequestInit {
+  skipAuth?: boolean;
+  _retried?: boolean;
+}
+
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+function isAuthLifecyclePath(path: string): boolean {
+  return (
+    path.startsWith("/api/v1/auth/login") ||
+    path.startsWith("/api/v1/auth/refresh") ||
+    path.startsWith("/api/v1/auth/logout")
+  );
+}
+
+/**
+ * Single-flight cookie-based refresh against `/api/v1/auth/refresh`.
+ */
+export async function performTokenRefresh(): Promise<string | null> {
+  return runSingleFlightRefresh(async () => {
+    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      return null;
+    }
+
+    const data = (await res.json()) as TokenResponse;
+    return {
+      access_token: data.access_token,
+      expires_in: data.expires_in,
+    };
+  });
+}
+
+async function parseErrorDetail(response: Response, fallback: string): Promise<string> {
+  const err = await response.json().catch(() => null);
+  if (err && typeof err.detail === "string" && err.detail.trim().length > 0) {
+    return err.detail;
+  }
+  return fallback;
+}
+
+export async function apiFetchResponse(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<Response> {
+  const { skipAuth = false, _retried = false, headers: customHeaders, ...fetchInit } = options;
+  const method = (fetchInit.method || "GET").toUpperCase();
+
+  if (!skipAuth && !isAuthLifecyclePath(path) && getAccessToken() && isAccessTokenExpiringSoon()) {
+    await performTokenRefresh();
+  }
+
+  const headers = new Headers(customHeaders);
+  if (!skipAuth) {
+    const token = getAccessToken();
+    if (token && !headers.has("Authorization")) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...fetchInit,
+    method,
+    headers,
+    credentials: "include",
+  });
+
+  if (response.status === 401 && !skipAuth && !_retried && !isAuthLifecyclePath(path)) {
+    const refreshedToken = await performTokenRefresh();
+    if (!refreshedToken) {
+      clearAccessToken();
+      notifySessionExpired("session_expired");
+      throw new ApiError(401, "Your session has expired. Please sign in again.");
+    }
+
+    if (IDEMPOTENT_METHODS.has(method)) {
+      return apiFetchResponse(path, {
+        ...options,
+        _retried: true,
+      });
+    }
+
+    // Do not blindly re-submit non-idempotent mutations after 401
+    throw new ApiError(401, "Session renewed. Please submit your request again.");
+  }
+
+  return response;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+  fallbackError?: string
+): Promise<T> {
+  const response = await apiFetchResponse(path, options);
+  if (!response.ok) {
+    const defaultMsg = fallbackError || `Request failed with status ${response.status}`;
+    const detail = await parseErrorDetail(response, defaultMsg);
+    throw new ApiError(response.status, detail);
+  }
+  return response.json() as Promise<T>;
+}
 
 export async function fetchSystemHealth(): Promise<SystemHealth> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/health`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Health check failed with status: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<SystemHealth>(
+    "/api/v1/health",
+    { cache: "no-store", skipAuth: true },
+    "Health check failed"
+  );
 }
 
 export async function fetchNvidiaHealth(): Promise<NvidiaHealth> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/health/nvidia`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`NVIDIA health check failed with status: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<NvidiaHealth>(
+    "/api/v1/health/nvidia",
+    { cache: "no-store", skipAuth: true },
+    "NVIDIA health check failed"
+  );
 }
 
 export async function uploadTenderPdf(
@@ -67,17 +190,11 @@ export async function uploadTenderPdf(
     formData.append("gem_tender_id", gemTenderId);
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/upload`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Upload failed with status ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<Tender>(
+    "/api/v1/tenders/upload",
+    { method: "POST", body: formData },
+    "Upload failed"
+  );
 }
 
 export async function triggerClauseExtraction(tenderId: string): Promise<{
@@ -87,64 +204,50 @@ export async function triggerClauseExtraction(tenderId: string): Promise<{
   extracted_count: number;
   clauses: TenderClause[];
 }> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/extract`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Extraction failed with status ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch(
+    `/api/v1/tenders/${tenderId}/extract`,
+    { method: "POST" },
+    "Extraction failed"
+  );
 }
 
 export async function fetchTenders(): Promise<Tender[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch tenders: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<Tender[]>(
+    "/api/v1/tenders",
+    { cache: "no-store" },
+    "Failed to fetch tenders"
+  );
 }
 
 export async function fetchTenderDetail(tenderId: string): Promise<Tender> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch tender detail: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<Tender>(
+    `/api/v1/tenders/${tenderId}`,
+    { cache: "no-store" },
+    "Failed to fetch tender detail"
+  );
 }
 
 export async function fetchTenderClauses(tenderId: string): Promise<TenderClause[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/clauses`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch clauses: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<TenderClause[]>(
+    `/api/v1/tenders/${tenderId}/clauses`,
+    { cache: "no-store" },
+    "Failed to fetch clauses"
+  );
 }
 
 export async function addManualClause(
   tenderId: string,
   clause: ClauseCreateInput
 ): Promise<TenderClause> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/clauses`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(clause),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to add clause: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<TenderClause>(
+    `/api/v1/tenders/${tenderId}/clauses`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(clause),
+    },
+    "Failed to add clause"
+  );
 }
 
 export async function updateClause(
@@ -152,60 +255,45 @@ export async function updateClause(
   clauseId: string,
   updates: ClauseUpdateInput
 ): Promise<TenderClause> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/clauses/${clauseId}`,
+  return apiFetch<TenderClause>(
+    `/api/v1/tenders/${tenderId}/clauses/${clauseId}`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updates),
-    }
+    },
+    "Failed to update clause"
   );
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to update clause: ${response.status}`);
-  }
-
-  return response.json();
 }
 
-export async function deleteClause(
-  tenderId: string,
-  clauseId: string
-): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/clauses/${clauseId}`,
-    {
-      method: "DELETE",
-    }
+export async function deleteClause(tenderId: string, clauseId: string): Promise<void> {
+  const response = await apiFetchResponse(
+    `/api/v1/tenders/${tenderId}/clauses/${clauseId}`,
+    { method: "DELETE" }
   );
-
   if (!response.ok) {
-    throw new Error(`Failed to delete clause: ${response.status}`);
+    const detail = await parseErrorDetail(
+      response,
+      `Failed to delete clause: ${response.status}`
+    );
+    throw new ApiError(response.status, detail);
   }
 }
 
 export async function confirmTenderClauses(tenderId: string): Promise<Tender> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/confirm`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to confirm clauses: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<Tender>(
+    `/api/v1/tenders/${tenderId}/confirm`,
+    { method: "POST" },
+    "Failed to confirm clauses"
+  );
 }
 
 export async function fetchTenderBidders(tenderId: string): Promise<Bidder[]> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch bidders: ${response.status}`);
-  }
-  return response.json();
+  return apiFetch<Bidder[]>(
+    `/api/v1/tenders/${tenderId}/bidders`,
+    { cache: "no-store" },
+    "Failed to fetch bidders"
+  );
 }
 
 export async function createBidder(
@@ -221,42 +309,32 @@ export async function createBidder(
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders`, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to create bidder: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<Bidder>(
+    `/api/v1/tenders/${tenderId}/bidders`,
+    { method: "POST", body: formData },
+    "Failed to create bidder"
+  );
 }
 
 export async function loadDemoBidders(tenderId: string): Promise<DemoBiddersLoadResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/demo`, {
-    method: "POST",
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to load demo bidders: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<DemoBiddersLoadResponse>(
+    `/api/v1/tenders/${tenderId}/bidders/demo`,
+    { method: "POST" },
+    "Failed to load demo bidders"
+  );
 }
 
 export async function deleteBidder(tenderId: string, bidderId: string): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}`,
-    {
-      method: "DELETE",
-    }
+  const response = await apiFetchResponse(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}`,
+    { method: "DELETE" }
   );
-
   if (!response.ok) {
-    throw new Error(`Failed to delete bidder: ${response.status}`);
+    const detail = await parseErrorDetail(
+      response,
+      `Failed to delete bidder: ${response.status}`
+    );
+    throw new ApiError(response.status, detail);
   }
 }
 
@@ -264,48 +342,34 @@ export async function triggerComplianceEvaluation(
   tenderId: string,
   options?: EvaluationRunRequest
 ): Promise<EvaluationRunResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/evaluations/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(options || { use_live_llm: false }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Evaluation run failed with status: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<EvaluationRunResponse>(
+    `/api/v1/tenders/${tenderId}/evaluations/run`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options || { use_live_llm: false }),
+    },
+    "Evaluation run failed"
+  );
 }
 
 export async function fetchComplianceMatrix(tenderId: string): Promise<ComplianceMatrixResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/v1/tenders/${tenderId}/evaluations/matrix`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch compliance matrix: ${response.status}`);
-  }
-
-  return response.json();
+  return apiFetch<ComplianceMatrixResponse>(
+    `/api/v1/tenders/${tenderId}/evaluations/matrix`,
+    { cache: "no-store" },
+    "Failed to fetch compliance matrix"
+  );
 }
 
 export async function fetchEvaluationDetail(
   tenderId: string,
   evaluationId: string
 ): Promise<EvaluationDetailResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/evaluations/${evaluationId}`,
-    {
-      cache: "no-store",
-    }
+  return apiFetch<EvaluationDetailResponse>(
+    `/api/v1/tenders/${tenderId}/evaluations/${evaluationId}`,
+    { cache: "no-store" },
+    "Failed to fetch evaluation detail"
   );
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch evaluation detail: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 export async function submitOfficerOverride(
@@ -313,21 +377,15 @@ export async function submitOfficerOverride(
   evaluationId: string,
   req: OfficerOverrideRequest
 ): Promise<EvaluationDetailResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/evaluations/${evaluationId}/override`,
+  return apiFetch<EvaluationDetailResponse>(
+    `/api/v1/tenders/${tenderId}/evaluations/${evaluationId}/override`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
-    }
+    },
+    "Failed to submit officer override"
   );
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to submit officer override: ${response.status}`);
-  }
-
-  return response.json();
 }
 
 // ============================================================================
@@ -335,15 +393,19 @@ export async function submitOfficerOverride(
 // ============================================================================
 
 export async function fetchMockSourcesSummary(): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/mock-sources`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to load mock sources summary: ${res.status}`);
-  return res.json();
+  return apiFetch<any>(
+    "/api/v1/mock-sources",
+    { cache: "no-store" },
+    "Failed to load mock sources summary"
+  );
 }
 
 export async function fetchMockSourcesIntegrity(): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/mock-sources/integrity`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to load dataset integrity: ${res.status}`);
-  return res.json();
+  return apiFetch<any>(
+    "/api/v1/mock-sources/integrity",
+    { cache: "no-store" },
+    "Failed to load dataset integrity"
+  );
 }
 
 export async function fetchMockSourceRecords(
@@ -361,28 +423,26 @@ export async function fetchMockSourceRecords(
   if (status && status.trim()) params.set("status", status.trim());
   if (showcaseOnly) params.set("showcase_only", "true");
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/mock-sources/${source}?${params.toString()}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Failed to fetch ${source} records: ${res.status}`);
-  return res.json();
+  return apiFetch<any>(
+    `/api/v1/mock-sources/${source}?${params.toString()}`,
+    { cache: "no-store" },
+    `Failed to fetch ${source} records`
+  );
 }
 
 export async function fetchMockRecordDetail(source: string, verificationId: string): Promise<any> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/mock-sources/${source}/${encodeURIComponent(verificationId)}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`Failed to load record detail: ${res.status}`);
-  return res.json();
+  return apiFetch<any>(
+    `/api/v1/mock-sources/${source}/${encodeURIComponent(verificationId)}`,
+    { cache: "no-store" },
+    "Failed to load record detail"
+  );
 }
 
 export async function fetchShowcaseBidders(bidderId?: string): Promise<any> {
-  const url = bidderId
-    ? `${API_BASE_URL}/api/v1/mock-sources/showcase?bidder_id=${encodeURIComponent(bidderId)}`
-    : `${API_BASE_URL}/api/v1/mock-sources/showcase`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to load showcase bidders: ${res.status}`);
-  return res.json();
+  const path = bidderId
+    ? `/api/v1/mock-sources/showcase?bidder_id=${encodeURIComponent(bidderId)}`
+    : "/api/v1/mock-sources/showcase";
+  return apiFetch<any>(path, { cache: "no-store" }, "Failed to load showcase bidders");
 }
 
 export function getMockSourceExportUrl(source: string): string {
@@ -393,45 +453,37 @@ export async function fetchBidderScore(
   tenderId: string,
   bidderId: string
 ): Promise<BidderComplianceScore> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/score`,
-    { cache: "no-store" }
+  return apiFetch<BidderComplianceScore>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/score`,
+    { cache: "no-store" },
+    "Failed to fetch bidder score"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch bidder score: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchTenderRanking(
   tenderId: string
 ): Promise<TenderBidderRankingResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/ranking`,
-    { cache: "no-store" }
+  return apiFetch<TenderBidderRankingResponse>(
+    `/api/v1/tenders/${tenderId}/ranking`,
+    { cache: "no-store" },
+    "Failed to fetch tender ranking"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch tender ranking: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchBidderRecommendation(
   tenderId: string,
   bidderId: string
 ): Promise<AIRecommendationResponse | null> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/recommendation`,
+  const res = await apiFetchResponse(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/recommendation`,
     { cache: "no-store" }
   );
   if (res.status === 404) {
     return null;
   }
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch recommendation: ${res.status}`);
+    const detail = await parseErrorDetail(res, `Failed to fetch recommendation: ${res.status}`);
+    throw new ApiError(res.status, detail);
   }
   return res.json();
 }
@@ -440,18 +492,14 @@ export async function generateBidderRecommendation(
   tenderId: string,
   bidderId: string
 ): Promise<AIRecommendationResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/recommendation`,
+  return apiFetch<AIRecommendationResponse>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/recommendation`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-    }
+    },
+    "Failed to generate recommendation"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to generate recommendation: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function submitOfficerReview(
@@ -459,49 +507,44 @@ export async function submitOfficerReview(
   bidderId: string,
   req: OfficerReviewRequest
 ): Promise<AuditRecordItem> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/review`,
+  return apiFetch<AuditRecordItem>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(req),
-    }
+    },
+    "Failed to submit officer review"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to submit officer review: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchBidderAuditTrail(
   tenderId: string,
   bidderId: string
 ): Promise<AuditTrailResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/audit`,
-    { cache: "no-store" }
+  return apiFetch<AuditTrailResponse>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/audit`,
+    { cache: "no-store" },
+    "Failed to fetch audit trail"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch audit trail: ${res.status}`);
-  }
-  return res.json();
 }
+
+// ====================================================
+// Phase 8.3 Statutory Verification Client APIs
+// ====================================================
 
 export async function verifyStatutorySources(
   query: StatutoryVerificationQuery
 ): Promise<BidderStatutoryVerificationSummary> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/statutory/verify`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(query),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to verify statutory sources: ${res.status}`);
-  }
-  return res.json();
+  return apiFetch<BidderStatutoryVerificationSummary>(
+    "/api/v1/statutory/verify",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(query),
+    },
+    "Failed to verify statutory sources"
+  );
 }
 
 export async function fetchStatutoryStatus(params?: {
@@ -515,25 +558,19 @@ export async function fetchStatutoryStatus(params?: {
   if (params?.authority) queryParts.push(`authority=${encodeURIComponent(params.authority)}`);
   const qs = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/statutory/status${qs}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch statutory status: ${res.status}`);
-  }
-  return res.json();
+  return apiFetch<SourceVerificationResult[]>(
+    `/api/v1/statutory/status${qs}`,
+    { cache: "no-store" },
+    "Failed to fetch statutory status"
+  );
 }
 
 export async function fetchStatutoryAdapters(): Promise<StatutoryAdapterInfo[]> {
-  const res = await fetch(`${API_BASE_URL}/api/v1/statutory/adapters`, {
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch statutory adapters: ${res.status}`);
-  }
-  return res.json();
+  return apiFetch<StatutoryAdapterInfo[]>(
+    "/api/v1/statutory/adapters",
+    { cache: "no-store" },
+    "Failed to fetch statutory adapters"
+  );
 }
 
 // ====================================================
@@ -546,42 +583,30 @@ export async function fetchBidderVerificationSummary(
   asOfDate?: string
 ): Promise<OfficerBidderVerificationSummary> {
   const qs = asOfDate ? `?as_of_date=${encodeURIComponent(asOfDate)}` : "";
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-summary${qs}`,
-    { cache: "no-store" }
+  return apiFetch<OfficerBidderVerificationSummary>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-summary${qs}`,
+    { cache: "no-store" },
+    "Failed to fetch verification summary"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch verification summary: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchBidderVerificationHistory(
   tenderId: string,
   bidderId: string
 ): Promise<VerificationHistoryResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-history`,
-    { cache: "no-store" }
+  return apiFetch<VerificationHistoryResponse>(
+    `/api/v1/tenders/${tenderId}/bidders/${bidderId}/verification-history`,
+    { cache: "no-store" },
+    "Failed to fetch verification history"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch verification history: ${res.status}`);
-  }
-  return res.json();
 }
 
 export async function fetchTenderReviewQueue(
   tenderId: string
 ): Promise<OfficerReviewQueueResponse> {
-  const res = await fetch(
-    `${API_BASE_URL}/api/v1/tenders/${tenderId}/review-queue`,
-    { cache: "no-store" }
+  return apiFetch<OfficerReviewQueueResponse>(
+    `/api/v1/tenders/${tenderId}/review-queue`,
+    { cache: "no-store" },
+    "Failed to fetch tender review queue"
   );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.detail || `Failed to fetch tender review queue: ${res.status}`);
-  }
-  return res.json();
 }

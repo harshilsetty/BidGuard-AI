@@ -42,6 +42,45 @@ def anyio_backend():
 
 
 @pytest.fixture(autouse=True)
+def setup_isolated_sqlite():
+    import asyncio, os, tempfile
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+    from app.core.database import Base, get_db
+
+    tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp_db.close()
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_db.name}", echo=False, future=True)
+    SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def _init():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    asyncio.run(_init())
+
+    orig_sl, orig_init = db_module.AsyncSessionLocal, db_module.init_db
+    async def _noop(): return None
+    async def _get_db():
+        async with SessionLocal() as s:
+            try:
+                yield s
+                await s.commit()
+            except Exception:
+                await s.rollback()
+                raise
+
+    db_module.AsyncSessionLocal = SessionLocal
+    db_module.init_db = _noop
+    app.dependency_overrides[get_db] = _get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
+    db_module.AsyncSessionLocal = orig_sl
+    db_module.init_db = orig_init
+    asyncio.run(engine.dispose())
+    try: os.remove(tmp_db.name)
+    except OSError: pass
+
+
+@pytest.fixture(autouse=True)
 def stub_embeddings():
     """Stub embedding service for test safety."""
     from unittest.mock import patch
@@ -423,49 +462,53 @@ async def test_mock_vs_bidder_evidence_clearly_distinguishable():
 # ===========================================================================
 @pytest.mark.anyio
 async def test_api_evidence_fusion_endpoint():
-    await db_module.init_db()
-    async with db_module.AsyncSessionLocal() as session:
-        await seed_mock_sources(session)
+    from tests_auth_helper import isolated_db_context, create_test_officer_and_headers
 
-        # 1. Create tender and bidder directly in DB
-        tender = Tender(
-            title="Evidence Fusion Verification Tender",
-            gem_tender_id=f"GEM/2026/B/FUSION-{uuid4().hex[:6]}",
-            file_name="tender.pdf",
-            total_pages=2,
-            extraction_status="READY",
-        )
-        session.add(tender)
-        await session.flush()
+    async with isolated_db_context() as SessionLocal:
+        async with SessionLocal() as session:
+            await seed_mock_sources(session)
+            org, _, headers = await create_test_officer_and_headers(session)
 
-        bidder = Bidder(
-            tender_id=tender.id,
-            company_name="Enterprise Tech Solutions Ltd (Bidder A)",
-            final_status="UNDER_REVIEW",
-        )
-        session.add(bidder)
-        await session.commit()
-        await session.refresh(bidder)
+            # 1. Create tender and bidder directly in DB
+            tender = Tender(
+                organization_id=org.id,
+                title="Evidence Fusion Verification Tender",
+                gem_tender_id=f"GEM/2026/B/FUSION-{uuid4().hex[:6]}",
+                file_name="tender.pdf",
+                total_pages=2,
+                extraction_status="READY",
+            )
+            session.add(tender)
+            await session.flush()
 
-        tender_id = tender.id
-        bidder_id = bidder.id
+            bidder = Bidder(
+                tender_id=tender.id,
+                company_name="Enterprise Tech Solutions Ltd (Bidder A)",
+                final_status="UNDER_REVIEW",
+            )
+            session.add(bidder)
+            await session.commit()
+            await session.refresh(bidder)
 
-    transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        # 2. Request evidence fusion profile
-        fusion_resp = await client.get(f"/api/v1/tenders/{tender_id}/bidders/{bidder_id}/evidence-fusion")
-        assert fusion_resp.status_code == 200
-        data = fusion_resp.json()
+            tender_id = tender.id
+            bidder_id = bidder.id
 
-        assert data["bidder_id"] == str(bidder_id)
-        assert "Enterprise Tech Solutions" in data["company_name"]
-        assert data["entity_identifier"] == "BIDDER-01"
-        assert "field_groups" in data
-        assert "turnover" in data["field_groups"]
-        assert data["total_evidence_items"] > 0
-        assert data["disclaimer"] == MOCK_SOURCE_TYPE_LABEL
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
+            # 2. Request evidence fusion profile
+            fusion_resp = await client.get(f"/api/v1/tenders/{tender_id}/bidders/{bidder_id}/evidence-fusion")
+            assert fusion_resp.status_code == 200
+            data = fusion_resp.json()
 
-        # 3. Request for non-existent bidder returns 404
-        fake_bidder_id = str(uuid4())
-        missing_resp = await client.get(f"/api/v1/tenders/{tender_id}/bidders/{fake_bidder_id}/evidence-fusion")
-        assert missing_resp.status_code == 404
+            assert data["bidder_id"] == str(bidder_id)
+            assert "Enterprise Tech Solutions" in data["company_name"]
+            assert data["entity_identifier"] == "BIDDER-01"
+            assert "field_groups" in data
+            assert "turnover" in data["field_groups"]
+            assert data["total_evidence_items"] > 0
+            assert data["disclaimer"] == MOCK_SOURCE_TYPE_LABEL
+
+            # 3. Request for non-existent bidder returns 404
+            fake_bidder_id = str(uuid4())
+            missing_resp = await client.get(f"/api/v1/tenders/{tender_id}/bidders/{fake_bidder_id}/evidence-fusion")
+            assert missing_resp.status_code == 404

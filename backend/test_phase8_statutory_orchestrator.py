@@ -26,7 +26,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.main import app
-from app.core.database import AsyncSessionLocal, init_db
+from app.core import database as db_module
+
+
+@pytest.fixture(autouse=True)
+def setup_isolated_sqlite():
+    from tests_auth_helper import yield_sync_isolated_sqlite
+    yield from yield_sync_isolated_sqlite()
 from app.schemas.statutory_verification import (
     StatutoryAuthority,
     SourceMode,
@@ -63,10 +69,9 @@ def anyio_backend():
 
 
 @pytest.fixture(autouse=True)
-async def setup_db_and_seeds(anyio_backend):
+async def setup_db_and_seeds(setup_isolated_sqlite):
     """Ensure database and mock sources are initialized and seeded."""
-    await init_db()
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         await seed_mock_sources(session)
         await session.commit()
 
@@ -104,7 +109,7 @@ async def test_sanitize_payload():
 @pytest.mark.anyio
 async def test_adapter_contracts_and_status_separation():
     """Verify each adapter returns clean separation between connection and verification status."""
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         registry = get_statutory_registry()
         authorities = registry.list_supported_authorities()
         assert len(authorities) >= 5
@@ -131,7 +136,7 @@ async def test_adapter_contracts_and_status_separation():
 @pytest.mark.anyio
 async def test_connection_success_with_entity_not_found():
     """Verify that querying a non-existent entity results in connection SUCCESS and verification NOT_FOUND."""
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         gstn_adapter = GSTNSourceAdapter()
         res = await gstn_adapter.verify(
             query_identifier="NON_EXISTENT_GSTIN_99999",
@@ -156,7 +161,7 @@ async def test_connection_success_with_entity_not_found():
 @pytest.mark.anyio
 async def test_temporal_behavior_as_of_date():
     """Verify temporal handling: as_of_date (date) and retrieved_at (timezone-aware datetime)."""
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         gstn_adapter = GSTNSourceAdapter()
         # Query with historical as_of_date
         past_date = date(2020, 1, 1)
@@ -299,7 +304,7 @@ async def test_adapter_failure_isolation():
     custom_registry.register(CrashingAdapter())
 
     orchestrator = StatutoryVerificationOrchestrator(registry=custom_registry)
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         query = StatutoryVerificationQuery(
             identifiers={"gstin": "CRASH_ME"},
             authorities=[StatutoryAuthority.GSTN, StatutoryAuthority.UDYAM],
@@ -320,8 +325,14 @@ async def test_adapter_failure_isolation():
 @pytest.mark.anyio
 async def test_rest_api_endpoints():
     """Verify REST endpoints: /adapters, /verify, /status."""
+    from tests_auth_helper import create_test_officer_and_headers
+    from app.core import database as db_module
+    async with db_module.AsyncSessionLocal() as session:
+        _, _, headers = await create_test_officer_and_headers(session)
+        await session.commit()
+
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         # 1. GET /api/v1/statutory/adapters
         res = await client.get("/api/v1/statutory/adapters")
         assert res.status_code == 200
@@ -360,7 +371,7 @@ async def test_bidder_isolation_and_persistence():
     from app.models.bidder import Bidder
 
     orchestrator = get_statutory_orchestrator()
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         # Create test tender and bidders to satisfy DB FK constraints
         tender = Tender(title=f"Statutory Test Tender {uuid.uuid4()}")
         session.add(tender)
@@ -418,7 +429,7 @@ async def test_evidence_fusion_compatibility():
     Verify that the factual attributes returned by Phase 8.1 adapters are
     compatible and consistent with the facts collected by EvidenceFusionService.
     """
-    async with AsyncSessionLocal() as session:
+    async with db_module.AsyncSessionLocal() as session:
         # 1. Collect statutory facts via EvidenceFusionService
         fusion_items = await EvidenceFusionService.collect_mock_source_evidence(
             bidder_company_name="Enterprise Tech Solutions Ltd",

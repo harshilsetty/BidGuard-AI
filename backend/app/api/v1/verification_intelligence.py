@@ -17,6 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.api.deps import require_permission, get_authorized_tender
+from app.models.user import User
 from app.schemas.verification_intelligence import (
     OfficerBidderVerificationSummary,
     OfficerReviewQueueResponse,
@@ -47,8 +49,10 @@ async def get_bidder_verification_summary(
         description="Optional evaluation reference date. If omitted, retains existing UNKNOWN_PERIOD semantics without date.today() fallback.",
     ),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ) -> OfficerBidderVerificationSummary:
     """Retrieve consolidated officer risk summary for a bidder under a tender."""
+    await get_authorized_tender(tender_id, current_user, db)
     try:
         return await VerificationIntelligenceService.get_bidder_verification_summary(
             tender_id=tender_id,
@@ -84,8 +88,10 @@ async def get_bidder_verification_history(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ) -> VerificationHistoryResponse:
     """Retrieve complete append-only verification history for a bidder."""
+    await get_authorized_tender(tender_id, current_user, db)
     try:
         return await VerificationIntelligenceService.get_bidder_verification_history(
             tender_id=tender_id,
@@ -119,8 +125,10 @@ async def get_bidder_verification_history(
 async def get_tender_review_queue(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ) -> OfficerReviewQueueResponse:
     """Retrieve tender review queue of bidders requiring officer action."""
+    await get_authorized_tender(tender_id, current_user, db)
     try:
         return await VerificationIntelligenceService.get_tender_review_queue(
             tender_id=tender_id,

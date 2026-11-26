@@ -218,8 +218,20 @@ async def retrieve_evidence_for_clause(
     embedder = embedding_service or get_embedding_service()
     query_vector = await embedder.embed_query(query_text)
 
-    # 3. Retrieve ranked chunks under strict bidder isolation
+    # 3. Retrieve ranked chunks under strict bidder isolation & embedding-space consistency
     if chunks is not None:
+        is_prod = getattr(settings, "ENVIRONMENT", "development").lower() == "production"
+        for c in chunks:
+            if c.bidder_id == bidder_id and c.embedding is not None:
+                if c.embedding_model is not None and not embedder.validate_embedding_space(c.embedding_model):
+                    raise ValueError(
+                        f"Embedding-space mismatch: chunk '{c.chunk_id}' uses '{c.embedding_model}', "
+                        f"incompatible with active model '{embedder.model_name}'. Re-indexing required."
+                    )
+                if is_prod and not embedder.validate_embedding_space(c.embedding_model):
+                    raise ValueError(
+                        f"Unverified embedding space for chunk '{c.chunk_id}' in production. Re-indexing required."
+                    )
         top_evidence = retrieve_evidence_from_memory(
             chunks=chunks,
             query_vector=query_vector,

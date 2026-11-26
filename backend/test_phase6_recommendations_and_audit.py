@@ -62,6 +62,12 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def setup_isolated_sqlite():
+    from tests_auth_helper import yield_sync_isolated_sqlite
+    yield from yield_sync_isolated_sqlite()
+
+
 # ---------------------------------------------------------------------------
 # Helpers for Synthetic In-Memory Context Tests
 # ---------------------------------------------------------------------------
@@ -376,10 +382,13 @@ async def test_deterministic_fallback_generation():
 # ---------------------------------------------------------------------------
 
 async def _seed_test_data() -> Dict[str, Any]:
-    """Create a persistent tender and bidder in PostgreSQL for recommendation testing."""
+    """Create a persistent tender and bidder in isolated DB for recommendation testing."""
+    from tests_auth_helper import create_test_officer_and_headers
     await db_module.init_db()
     async with db_module.AsyncSessionLocal() as session:
+        org, _, headers = await create_test_officer_and_headers(session)
         tender = Tender(
+            organization_id=org.id,
             title="Phase 6.5 AI Recommendation Test Tender",
             gem_tender_id=f"GEM/2026/TEST/{uuid4().hex[:6]}",
             file_name="tender.pdf",
@@ -448,6 +457,7 @@ async def _seed_test_data() -> Dict[str, Any]:
             "bidder_id": bidder.id,
             "clause1_id": clause1.id,
             "clause2_id": clause2.id,
+            "headers": headers,
         }
 
 
@@ -636,6 +646,7 @@ async def test_api_recommendation_and_review_workflow():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
+        headers=seeded["headers"],
     ) as client:
         # 1. GET recommendation before generation -> 404
         get_res1 = await client.get(f"/api/v1/tenders/{tender_id}/bidders/{bidder_id}/recommendation")
@@ -689,6 +700,7 @@ async def test_tender_and_bidder_isolation():
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",
+        headers=seeded["headers"],
     ) as client:
         # Cross-tender call -> 404
         res1 = await client.get(f"/api/v1/tenders/{other_tender_id}/bidders/{bidder_id}/recommendation")

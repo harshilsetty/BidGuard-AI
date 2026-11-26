@@ -560,3 +560,45 @@ export interface OfficerReviewQueueResponse {
   generated_at: string;
   disclaimer: string;
 }
+
+// ====================================================
+// Phase 1.1 Enterprise Authentication & RBAC Types
+// ====================================================
+
+export type UserRole =
+  | "SUPER_ADMIN"
+  | "ORG_ADMIN"
+  | "PROCUREMENT_OFFICER"
+  | "AUDITOR"
+  | "BIDDER";
+
+export type AuthStatus = "initializing" | "authenticated" | "unauthenticated";
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user_id: string;
+  organization_id: string;
+  roles: string[];
+  permissions: string[];
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  organization_id: string;
+  organization_name: string;
+  roles: string[];
+  permissions: string[];
+  is_active: boolean;
+  is_verified: boolean;
+  last_login_at?: string | null;
+  created_at: string;
+}

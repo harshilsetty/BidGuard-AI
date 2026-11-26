@@ -19,6 +19,7 @@ class DocumentChunk(Base, BaseModelMixin):
     content = Column(Text, nullable=False)
     # Configurable vector embedding dimension matching verified model
     embedding = Column(Vector(dim=settings.EMBEDDING_DIM), nullable=True)
+    embedding_model = Column(String(100), nullable=True)
 
     # Phase 7 OCR Provenance
     extraction_method = Column(String(50), default="DIGITAL_TEXT", nullable=False, index=True)

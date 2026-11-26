@@ -5,11 +5,17 @@ from typing import List, Optional
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, or_
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.api.deps import (
+    require_permission,
+    get_authorized_tender,
+    validate_tender_tenant_access,
+)
+from app.models.user import User
 from app.models.tender import Tender
 from app.models.clause import TenderClause
 from app.schemas.tender import (
@@ -38,7 +44,8 @@ async def upload_tender_pdf(
     file: UploadFile = File(...),
     title: str = Form(...),
     gem_tender_id: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:create")),
 ):
     """Upload a GeM Tender PDF and extract initial page structure using PyMuPDF."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -73,6 +80,7 @@ async def upload_tender_pdf(
 
     # Create Tender record
     tender = Tender(
+        organization_id=current_user.organization_id if current_user else None,
         title=title,
         gem_tender_id=gem_tender_id,
         file_name=file.filename,
@@ -108,16 +116,11 @@ async def upload_tender_pdf(
 @router.post("/{tender_id}/extract", response_model=ExtractionResultResponse)
 async def extract_tender_clauses(
     tender_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
 ):
     """Run AI clause extraction across 3-page sliding windows using NVIDIA NIM GPT-OSS 20B."""
-    # Fetch tender
-    stmt = select(Tender).where(Tender.id == tender_id)
-    result = await db.execute(stmt)
-    tender = result.scalar_one_or_none()
-
-    if not tender:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender not found")
+    tender = await get_authorized_tender(tender_id, current_user, db)
 
     if not tender.file_path or not os.path.exists(tender.file_path):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tender PDF file not found on disk")
@@ -189,17 +192,21 @@ async def extract_tender_clauses(
 
 
 @router.get("", response_model=List[TenderResponse])
-async def list_tenders(db: AsyncSession = Depends(get_db)):
-    """List all tenders with status and clause counts."""
+async def list_tenders(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """List all tenders with status and clause counts, strictly scoped to user's organization."""
     stmt = (
         select(
             Tender,
             func.count(TenderClause.id).label("clause_count")
         )
         .outerjoin(TenderClause, Tender.id == TenderClause.tender_id)
-        .group_by(Tender.id)
-        .order_by(Tender.created_at.desc())
     )
+    if "SUPER_ADMIN" not in getattr(current_user, "live_roles", []):
+        stmt = stmt.where(Tender.organization_id == current_user.organization_id)
+    stmt = stmt.group_by(Tender.id).order_by(Tender.created_at.desc())
     result = await db.execute(stmt)
     rows = result.all()
 
@@ -223,7 +230,8 @@ async def list_tenders(db: AsyncSession = Depends(get_db)):
 @router.get("/{tender_id}", response_model=TenderDetailResponse)
 async def get_tender_detail(
     tender_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
 ):
     """Get tender details and all associated clauses."""
     stmt = (
@@ -236,6 +244,7 @@ async def get_tender_detail(
 
     if not tender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender not found")
+    validate_tender_tenant_access(tender, current_user)
 
     return TenderDetailResponse(
         id=tender.id,
@@ -253,9 +262,12 @@ async def get_tender_detail(
 @router.get("/{tender_id}/clauses", response_model=List[ClauseResponse])
 async def get_tender_clauses(
     tender_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
 ):
     """Fetch all clauses for human review."""
+    await get_authorized_tender(tender_id, current_user, db)
+
     stmt = (
         select(TenderClause)
         .where(TenderClause.tender_id == tender_id)
@@ -270,15 +282,11 @@ async def get_tender_clauses(
 async def add_manual_clause(
     tender_id: UUID,
     req: ClauseCreateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
 ):
     """Manually add a custom clause with a unique, non-recycled code."""
-    stmt = select(Tender).where(Tender.id == tender_id)
-    result = await db.execute(stmt)
-    tender = result.scalar_one_or_none()
-
-    if not tender:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender not found")
+    tender = await get_authorized_tender(tender_id, current_user, db)
 
     # Generate next code without recycling
     prefix = CATEGORY_PREFIX_MAP.get(req.category.upper(), "GEN")
@@ -311,9 +319,12 @@ async def update_clause(
     tender_id: UUID,
     clause_id: UUID,
     req: ClauseUpdateRequest,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
 ):
     """Update clause fields during human review."""
+    await get_authorized_tender(tender_id, current_user, db)
+
     stmt = select(TenderClause).where(
         TenderClause.id == clause_id,
         TenderClause.tender_id == tender_id
@@ -350,9 +361,12 @@ async def update_clause(
 async def delete_clause(
     tender_id: UUID,
     clause_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
 ):
     """Delete a clause from review. The sequence number is NOT recycled."""
+    await get_authorized_tender(tender_id, current_user, db)
+
     stmt = select(TenderClause).where(
         TenderClause.id == clause_id,
         TenderClause.tender_id == tender_id
@@ -371,7 +385,8 @@ async def delete_clause(
 @router.post("/{tender_id}/confirm", response_model=TenderDetailResponse)
 async def confirm_tender_clauses(
     tender_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
 ):
     """Human Confirmation: Lock all clauses and mark tender status as READY."""
     stmt = (
@@ -384,6 +399,7 @@ async def confirm_tender_clauses(
 
     if not tender:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender not found")
+    validate_tender_tenant_access(tender, current_user)
 
     if not tender.clauses:
         raise HTTPException(

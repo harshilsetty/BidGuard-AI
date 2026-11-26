@@ -19,6 +19,7 @@ from sqlalchemy import select, func, or_, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.api.deps import get_current_active_user
 from app.models.mock_sources import (
     MockGSTNRecord,
     MockUdyamRecord,
@@ -30,7 +31,7 @@ from app.models.mock_sources import (
     MOCK_SOURCE_TYPE_LABEL,
 )
 
-router = APIRouter(tags=["Mock Sources Explorer"])
+router = APIRouter(tags=["Mock Sources Explorer"], dependencies=[Depends(get_current_active_user)])
 
 SOURCE_MODELS: Dict[str, Any] = {
     "gstn": MockGSTNRecord,

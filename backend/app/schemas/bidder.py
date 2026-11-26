@@ -64,6 +64,7 @@ class DocumentChunkItem(BaseModel):
     start_char: Optional[int] = None
     end_char: Optional[int] = None
     embedding: Optional[List[float]] = None
+    embedding_model: Optional[str] = None
     extraction_method: ExtractionMethod = ExtractionMethod.DIGITAL_TEXT
     ocr_confidence: Optional[float] = None
 

@@ -7,6 +7,44 @@ from app.core.database import Base
 from app.models.base import BaseModelMixin
 
 
+class AuditLog(Base, BaseModelMixin):
+    """
+    Append-only, immutable security and tenant audit log.
+    Records authentication events, data modifications, compliance overrides, and admin actions.
+    No update or delete operations are permitted.
+    """
+    __tablename__ = "audit_logs"
+
+    timestamp = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True
+    )
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+    action = Column(String(100), nullable=False, index=True)
+    target_type = Column(String(100), nullable=False, index=True)
+    target_id = Column(String(100), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    diff_json = Column(JSON, nullable=True)
+
+    # Relationships
+    organization = relationship("Organization")
+    user = relationship("User")
+
+
 class RecommendationAuditRecord(Base, BaseModelMixin):
     """
     Append-only, immutable audit record preserving AI recommendations,

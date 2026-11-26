@@ -10,6 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.api.deps import require_permission, get_authorized_tender
+from app.models.user import User
 from app.models.tender import Tender
 from app.models.bidder import Bidder, BidDocument
 from app.models.chunk import DocumentChunk
@@ -116,9 +118,10 @@ async def _build_bidder_detail(bidder: Bidder, db: AsyncSession) -> BidderDetail
 async def list_bidders_for_tender(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
 ):
     """List all bidders registered under a tender with document and chunk counts."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     stmt = select(Bidder).where(Bidder.tender_id == tender_id).order_by(Bidder.created_at)
     bidders = (await db.execute(stmt)).scalars().all()
@@ -136,9 +139,10 @@ async def create_bidder(
     company_name: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("document:upload")),
 ):
     """Register a new bidder for a tender, optionally uploading initial proposal PDFs."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     clean_name = company_name.strip()
     if not clean_name:
@@ -212,6 +216,7 @@ async def create_bidder(
                         end_char=chunk.end_char,
                         content=chunk.chunk_text,
                         embedding=chunk.embedding,
+                        embedding_model=embedder.model_name,
                         extraction_method=chunk.extraction_method.value if hasattr(chunk.extraction_method, "value") else str(chunk.extraction_method),
                         ocr_confidence=chunk.ocr_confidence,
                     )
@@ -227,6 +232,7 @@ async def create_bidder(
 async def load_demo_bidders(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("document:upload")),
 ):
     """Idempotently load SIH Demo Bidders A, B, and C with full PDF ingestion, chunking, and embedding.
 
@@ -234,7 +240,7 @@ async def load_demo_bidders(
     - Running once or multiple times will NEVER duplicate bidders, documents, or chunks.
     - Preserves existing evaluations and officer overrides.
     """
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     upload_dir = os.path.join(os.getcwd(), settings.UPLOAD_DIR)
     os.makedirs(upload_dir, exist_ok=True)
@@ -311,6 +317,7 @@ async def load_demo_bidders(
                         end_char=chunk.end_char,
                         content=chunk.chunk_text,
                         embedding=chunk.embedding,
+                        embedding_model=embedder.model_name,
                         extraction_method=chunk.extraction_method.value if hasattr(chunk.extraction_method, "value") else str(chunk.extraction_method),
                         ocr_confidence=chunk.ocr_confidence,
                     )
@@ -372,9 +379,10 @@ async def get_bidder_detail(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
 ):
     """Fetch details of a specific bidder, enforcing tender boundary isolation."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     stmt = select(Bidder).where(
         Bidder.id == bidder_id,
@@ -400,9 +408,10 @@ async def get_bidder_evidence_fusion(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Retrieve normalized, multi-source evidence fusion profile for a bidder."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     stmt = select(Bidder).where(
         Bidder.id == bidder_id,
@@ -433,9 +442,10 @@ async def get_bidder_cross_source_verification(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Run deterministic cross-source verification across bidder documents and mock statutory registries."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     stmt = select(Bidder).where(
         Bidder.id == bidder_id,
@@ -463,9 +473,10 @@ async def delete_bidder(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:delete")),
 ):
     """Delete a bidder and all cascading documents, chunks, and evaluations under this tender."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     stmt = select(Bidder).where(
         Bidder.id == bidder_id,

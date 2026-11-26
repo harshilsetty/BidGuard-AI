@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 import { fetchSystemHealth, fetchNvidiaHealth, fetchTenders } from "@/lib/api-client";
 import { SystemHealth, NvidiaHealth, Tender } from "@/lib/types";
 import {
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 
 export default function HomePage() {
+  const { hasPermission } = useAuth();
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [nvidiaHealth, setNvidiaHealth] = useState<NvidiaHealth | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -100,13 +102,15 @@ export default function HomePage() {
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
             <span className="text-xs font-medium">Refresh</span>
           </button>
-          <Link
-            href="/tenders/new"
-            className="inline-flex items-center space-x-2 px-4 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-sm font-semibold transition shadow-sm border border-blue-400/30"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Upload Tender</span>
-          </Link>
+          {hasPermission("tender:create") && (
+            <Link
+              href="/tenders/new"
+              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-sm font-semibold transition shadow-sm border border-blue-400/30"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Upload Tender</span>
+            </Link>
+          )}
         </div>
       </div>
 

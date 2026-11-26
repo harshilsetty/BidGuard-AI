@@ -22,25 +22,52 @@ Covers tests 1 through 19:
 19. Integrity confirms five required contradiction/exemption scenarios.
 """
 
+import os
 import asyncio
+import tempfile
+from unittest.mock import AsyncMock, patch
 import pytest
 from starlette.testclient import TestClient
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from app.main import app
-from app.core import database as db_module
+from app.core.database import Base, get_db
 from app.services.mock_seeder import seed_mock_sources
+from tests_auth_helper import create_test_officer_and_headers
 
 
 @pytest.fixture(scope="module")
 def client():
-    # Ensure database tables and fallback are initialized
-    async def _setup():
-        await db_module.init_db()
-        async with db_module.AsyncSessionLocal() as session:
-            await seed_mock_sources(session)
-    asyncio.run(_setup())
+    tmp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp_db.close()
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_db.name}", echo=False, future=True)
+    SessionLocal = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
-    with TestClient(app) as c:
-        yield c
+    async def override_get_db():
+        async with SessionLocal() as session:
+            yield session
+
+    async def _setup():
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with SessionLocal() as session:
+            await seed_mock_sources(session)
+            _, _, headers = await create_test_officer_and_headers(session)
+            await session.commit()
+            return headers
+
+    headers = asyncio.run(_setup())
+    app.dependency_overrides[get_db] = override_get_db
+
+    with patch("app.main.init_db", new=AsyncMock()):
+        with TestClient(app, headers=headers) as c:
+            yield c
+
+    app.dependency_overrides.pop(get_db, None)
+    asyncio.run(engine.dispose())
+    try:
+        os.remove(tmp_db.name)
+    except OSError:
+        pass
 
 
 # 1. Source list endpoint

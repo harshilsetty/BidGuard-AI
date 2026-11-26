@@ -1,8 +1,11 @@
 import logging
+import os
+import sys
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import declarative_base
-from sqlalchemy import text
+from sqlalchemy.pool import NullPool
+from sqlalchemy import text, event
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -13,10 +16,24 @@ Base = declarative_base()
 is_sqlite = "sqlite" in settings.DATABASE_URL
 engine_kwargs = {"echo": False, "future": True}
 if not is_sqlite:
-    engine_kwargs.update({"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20})
+    if os.environ.get("TESTING") == "1" or "pytest" in sys.modules:
+        engine_kwargs.update({"poolclass": NullPool})
+    else:
+        engine_kwargs.update({"pool_pre_ping": True, "pool_size": 10, "max_overflow": 20})
 
 # Async database engine
 engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
+
+
+def _enable_sqlite_foreign_keys(dbapi_connection, connection_record):
+    """Enforce PRAGMA foreign_keys=ON on every SQLite connection."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
+if is_sqlite:
+    event.listen(engine.sync_engine, "connect", _enable_sqlite_foreign_keys)
 
 # Async session factory
 AsyncSessionLocal = async_sessionmaker(
@@ -109,6 +126,7 @@ async def init_db() -> None:
             )
             sqlite_url = "sqlite+aiosqlite:///gem_compliance.db"
             engine = create_async_engine(sqlite_url, echo=False, future=True)
+            event.listen(engine.sync_engine, "connect", _enable_sqlite_foreign_keys)
             AsyncSessionLocal = async_sessionmaker(
                 bind=engine,
                 class_=AsyncSession,

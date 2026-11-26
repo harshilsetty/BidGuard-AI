@@ -15,6 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
 from app.core.database import get_db
+from app.api.deps import (
+    require_permission,
+    get_authorized_tender,
+    validate_bidder_tenant_access,
+)
+from app.models.user import User
+from app.models.tender import Tender
 from app.schemas.statutory_verification import (
     StatutoryAuthority,
     SourceMode,
@@ -51,8 +58,14 @@ async def verify_statutory_sources(
     query: StatutoryVerificationQuery,
     db: AsyncSession = Depends(get_db),
     orchestrator: StatutoryVerificationOrchestrator = Depends(get_statutory_orchestrator),
+    current_user: User = Depends(require_permission("evaluation:run")),
 ) -> BidderStatutoryVerificationSummary:
     """Trigger statutory verification for a bidder or ad-hoc statutory identifiers."""
+    if query.tender_id:
+        await get_authorized_tender(query.tender_id, current_user, db)
+    if query.bidder_id:
+        await validate_bidder_tenant_access(query.bidder_id, query.tender_id, current_user, db)
+
     try:
         summary = await orchestrator.verify_statutory_sources(
             query=query,
@@ -80,9 +93,19 @@ async def get_statutory_status(
     authority: Optional[str] = Query(None, description="Authority filter (e.g. GSTN, UDYAM)"),
     limit: int = Query(50, ge=1, le=200, description="Max records to return"),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ) -> List[SourceVerificationResult]:
-    """Retrieve historical statutory verification records."""
+    """Retrieve historical statutory verification records scoped to the user's organization."""
+    if tender_id:
+        await get_authorized_tender(tender_id, current_user, db)
+    if bidder_id:
+        await validate_bidder_tenant_access(bidder_id, tender_id, current_user, db)
+
     stmt = select(StatutoryVerificationRecord)
+    if "SUPER_ADMIN" not in getattr(current_user, "live_roles", []):
+        stmt = stmt.join(Tender, StatutoryVerificationRecord.tender_id == Tender.id).where(
+            Tender.organization_id == current_user.organization_id
+        )
 
     if bidder_id:
         stmt = stmt.where(StatutoryVerificationRecord.bidder_id == bidder_id)
@@ -124,7 +147,9 @@ async def get_statutory_status(
     summary="List available statutory adapters",
     description="Returns metadata of all registered statutory source adapters.",
 )
-async def list_statutory_adapters() -> List[Dict[str, Any]]:
+async def list_statutory_adapters(
+    current_user: User = Depends(require_permission("evaluation:read")),
+) -> List[Dict[str, Any]]:
     """List all registered statutory adapters and their supported identifier types."""
     registry = get_statutory_registry()
     adapters = registry.get_all_adapters()

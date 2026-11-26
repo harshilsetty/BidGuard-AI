@@ -9,6 +9,14 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.api.deps import (
+    require_permission,
+    get_authorized_tender,
+    validate_evaluation_tenant_access,
+    validate_bidder_tenant_access,
+)
+from app.models.user import User
+from app.models.audit import AuditLog
 from app.models.tender import Tender
 from app.models.clause import TenderClause
 from app.models.bidder import Bidder, BidDocument
@@ -106,6 +114,7 @@ async def run_tender_compliance_evaluation(
     tender_id: UUID,
     req: EvaluationRunRequest = EvaluationRunRequest(),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:run")),
 ):
     """Execute the Hybrid Compliance Engine across all bidders and clauses for a tender.
 
@@ -115,7 +124,7 @@ async def run_tender_compliance_evaluation(
     - Deterministic Python rules evaluate numeric and strict constraints.
     - Preserves existing officer overrides: evaluate -> override -> evaluate leaves overrides intact.
     """
-    tender = await _get_tender_or_404(tender_id, db)
+    tender = await get_authorized_tender(tender_id, current_user, db)
 
     # 1. Load Clauses for Tender
     c_stmt = (
@@ -184,6 +193,7 @@ async def run_tender_compliance_evaluation(
                 start_char=row[0].start_char,
                 end_char=row[0].end_char,
                 embedding=list(row[0].embedding) if row[0].embedding is not None else None,
+                embedding_model=row[0].embedding_model,
             )
             for row in chunk_rows
         ]
@@ -284,9 +294,10 @@ async def run_tender_compliance_evaluation(
 async def get_compliance_matrix(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Fetch comparative compliance matrix for tender, with clause, bidder, and override details."""
-    tender = await _get_tender_or_404(tender_id, db)
+    tender = await get_authorized_tender(tender_id, current_user, db)
 
     # 1. Fetch clauses
     c_stmt = (
@@ -435,30 +446,10 @@ async def get_evaluation_detail(
     evaluation_id: UUID,
     tender_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
-    """Retrieve full audit detail for a specific evaluation cell with tender boundary verification."""
-    stmt = (
-        select(ComplianceEvaluation)
-        .where(ComplianceEvaluation.id == evaluation_id)
-        .options(
-            selectinload(ComplianceEvaluation.clause),
-            selectinload(ComplianceEvaluation.bidder),
-        )
-    )
-    eval_rec = (await db.execute(stmt)).scalar_one_or_none()
-
-    if not eval_rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Compliance evaluation {evaluation_id} not found",
-        )
-
-    # Tender ownership verification
-    if tender_id and eval_rec.clause.tender_id != tender_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Evaluation {evaluation_id} does not belong to tender {tender_id}",
-        )
+    """Retrieve full audit detail for a specific evaluation cell with tender and tenant boundary verification."""
+    eval_rec = await validate_evaluation_tenant_access(evaluation_id, tender_id, current_user, db)
 
     return _to_detail_response(
         eval_rec=eval_rec,
@@ -475,12 +466,14 @@ async def override_evaluation_decision(
     req: OfficerOverrideRequest,
     tender_id: Optional[UUID] = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:override")),
 ):
     """Apply a procurement officer override with mandatory non-empty justification.
 
     Validates:
     - Non-empty officer justification (minimum length 3).
-    - Tender boundary isolation.
+    - Role permission (requires evaluation:override).
+    - Multi-tenant boundary isolation.
     - Preserves audit trail and marks override.
     """
     clean_reason = req.override_reason.strip()
@@ -490,32 +483,29 @@ async def override_evaluation_decision(
             detail="Officer override requires a non-empty justification with at least 3 characters.",
         )
 
-    stmt = (
-        select(ComplianceEvaluation)
-        .where(ComplianceEvaluation.id == evaluation_id)
-        .options(
-            selectinload(ComplianceEvaluation.clause),
-            selectinload(ComplianceEvaluation.bidder),
-        )
-    )
-    eval_rec = (await db.execute(stmt)).scalar_one_or_none()
-
-    if not eval_rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Compliance evaluation {evaluation_id} not found",
-        )
-
-    # Tender ownership verification
-    if tender_id and eval_rec.clause.tender_id != tender_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Evaluation {evaluation_id} does not belong to tender {tender_id}",
-        )
+    eval_rec = await validate_evaluation_tenant_access(evaluation_id, tender_id, current_user, db)
 
     # Apply override
     eval_rec.override_status = req.override_status.value
     eval_rec.override_reason = clean_reason
+
+    # Append-only audit record
+    audit_entry = AuditLog(
+        organization_id=current_user.organization_id,
+        user_id=current_user.id,
+        action="EVALUATION_OVERRIDE",
+        target_type="ComplianceEvaluation",
+        target_id=str(evaluation_id),
+        diff_json={
+            "clause_code": eval_rec.clause.clause_code if eval_rec.clause else None,
+            "previous_status": str(eval_rec.status),
+            "override_status": req.override_status.value,
+            "override_reason": clean_reason,
+            "bidder_id": str(eval_rec.bidder_id),
+            "tender_id": str(eval_rec.clause.tender_id) if eval_rec.clause else None,
+        },
+    )
+    db.add(audit_entry)
     await db.commit()
     await db.refresh(eval_rec)
 
@@ -580,9 +570,10 @@ async def get_bidder_compliance_score(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Retrieve 100-point compliance score, risk assessment, and component breakdown for a bidder."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
 
     b_stmt = select(Bidder).where(
         Bidder.id == bidder_id,
@@ -607,30 +598,10 @@ async def get_evaluation_bidder_compliance_score(
     tender_id: UUID,
     evaluation_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Retrieve compliance score for the bidder associated with a specific evaluation cell."""
-    await _get_tender_or_404(tender_id, db)
-
-    eval_stmt = (
-        select(ComplianceEvaluation)
-        .where(ComplianceEvaluation.id == evaluation_id)
-        .options(
-            selectinload(ComplianceEvaluation.clause),
-            selectinload(ComplianceEvaluation.bidder),
-        )
-    )
-    eval_rec = (await db.execute(eval_stmt)).scalar_one_or_none()
-    if not eval_rec:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Compliance evaluation {evaluation_id} not found",
-        )
-
-    if eval_rec.clause.tender_id != tender_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Evaluation {evaluation_id} does not belong to tender {tender_id}",
-        )
+    eval_rec = await validate_evaluation_tenant_access(evaluation_id, tender_id, current_user, db)
 
     return await _compute_bidder_score(eval_rec.bidder, tender_id, db)
 
@@ -643,9 +614,10 @@ async def get_evaluation_bidder_compliance_score(
 async def get_tender_bidder_ranking(
     tender_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Retrieve deterministic, comparative bidder ranking and safety risk assessment under a tender."""
-    tender = await _get_tender_or_404(tender_id, db)
+    tender = await get_authorized_tender(tender_id, current_user, db)
 
     b_stmt = select(Bidder).where(Bidder.tender_id == tender_id).order_by(Bidder.created_at)
     bidders = (await db.execute(b_stmt)).scalars().all()
@@ -671,9 +643,10 @@ async def generate_bidder_recommendation(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:run")),
 ):
     """Generate explainable AI procurement recommendation with deterministic grounding and audit logging."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
     return await RecommendationService.generate_recommendation(
         tender_id=tender_id,
         bidder_id=bidder_id,
@@ -691,9 +664,10 @@ async def get_bidder_recommendation(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:read")),
 ):
     """Read-only: Retrieve latest existing recommendation. Returns 404 if absent. Never calls LLMs or generates data."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
     return await RecommendationService.get_latest_recommendation(
         tender_id=tender_id,
         bidder_id=bidder_id,
@@ -711,9 +685,10 @@ async def submit_officer_review(
     bidder_id: UUID,
     req: OfficerReviewRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:override")),
 ):
     """Record Procurement Officer review action with mandatory justification. Appends an immutable audit event."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
     return await RecommendationService.record_officer_review(
         tender_id=tender_id,
         bidder_id=bidder_id,
@@ -731,9 +706,10 @@ async def get_bidder_audit_trail(
     tender_id: UUID,
     bidder_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("audit:read")),
 ):
     """Read-only: Retrieve complete chronological audit trail of recommendation and review actions for a bidder."""
-    await _get_tender_or_404(tender_id, db)
+    await get_authorized_tender(tender_id, current_user, db)
     return await RecommendationService.get_audit_trail(
         tender_id=tender_id,
         bidder_id=bidder_id,

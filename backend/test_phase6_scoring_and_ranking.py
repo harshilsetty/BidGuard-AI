@@ -40,6 +40,12 @@ import httpx
 
 from app.main import app
 from app.core import database as db_module
+
+
+@pytest.fixture(autouse=True)
+def setup_isolated_sqlite():
+    from tests_auth_helper import yield_sync_isolated_sqlite
+    yield from yield_sync_isolated_sqlite()
 from app.models.tender import Tender
 from app.models.clause import TenderClause
 from app.models.bidder import Bidder
@@ -580,10 +586,12 @@ def test_ranking_tie_breakers():
 # ===========================================================================
 @pytest.mark.anyio
 async def test_tender_isolation():
+    from tests_auth_helper import create_test_officer_and_headers
     await db_module.init_db()
     async with db_module.AsyncSessionLocal() as session:
-        t1 = Tender(title="Tender 1", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="t1.pdf", total_pages=1, extraction_status="READY")
-        t2 = Tender(title="Tender 2", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="t2.pdf", total_pages=1, extraction_status="READY")
+        org, _, headers = await create_test_officer_and_headers(session)
+        t1 = Tender(organization_id=org.id, title="Tender 1", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="t1.pdf", total_pages=1, extraction_status="READY")
+        t2 = Tender(organization_id=org.id, title="Tender 2", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="t2.pdf", total_pages=1, extraction_status="READY")
         session.add_all([t1, t2])
         await session.flush()
 
@@ -595,7 +603,7 @@ async def test_tender_isolation():
         t1_id, t2_id, b1_id, b2_id = t1.id, t2.id, b1.id, b2.id
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         res1 = await client.get(f"/api/v1/tenders/{t1_id}/ranking")
         assert res1.status_code == 200
         data1 = res1.json()
@@ -755,11 +763,13 @@ def test_scoring_does_not_mutate_evaluations():
 # ===========================================================================
 @pytest.mark.anyio
 async def test_bidder_score_api_endpoint():
+    from tests_auth_helper import create_test_officer_and_headers
     await db_module.init_db()
     async with db_module.AsyncSessionLocal() as session:
         await seed_mock_sources(session)
+        org, _, headers = await create_test_officer_and_headers(session)
 
-        tender = Tender(title="Score API Tender", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="tender.pdf", total_pages=2, extraction_status="READY")
+        tender = Tender(organization_id=org.id, title="Score API Tender", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="tender.pdf", total_pages=2, extraction_status="READY")
         session.add(tender)
         await session.flush()
 
@@ -770,7 +780,7 @@ async def test_bidder_score_api_endpoint():
         t_id, b_id = tender.id, bidder.id
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         resp = await client.get(f"/api/v1/tenders/{t_id}/bidders/{b_id}/score")
         assert resp.status_code == 200
         data = resp.json()
@@ -787,11 +797,13 @@ async def test_bidder_score_api_endpoint():
 # ===========================================================================
 @pytest.mark.anyio
 async def test_tender_ranking_api_endpoint():
+    from tests_auth_helper import create_test_officer_and_headers
     await db_module.init_db()
     async with db_module.AsyncSessionLocal() as session:
         await seed_mock_sources(session)
+        org, _, headers = await create_test_officer_and_headers(session)
 
-        tender = Tender(title="Ranking API Tender", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="tender.pdf", total_pages=2, extraction_status="READY")
+        tender = Tender(organization_id=org.id, title="Ranking API Tender", gem_tender_id=f"GEM/{uuid4().hex[:6]}", file_name="tender.pdf", total_pages=2, extraction_status="READY")
         session.add(tender)
         await session.flush()
 
@@ -803,7 +815,7 @@ async def test_tender_ranking_api_endpoint():
         t_id = tender.id
 
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test", headers=headers) as client:
         resp = await client.get(f"/api/v1/tenders/{t_id}/ranking")
         assert resp.status_code == 200
         data = resp.json()
