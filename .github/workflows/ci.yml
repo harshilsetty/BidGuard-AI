@@ -10,6 +10,20 @@ jobs:
   backend-test:
     name: Backend Pytest Suite
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: gem_compliance
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -26,7 +40,20 @@ jobs:
           pip install -r backend/requirements.txt
           pip install pytest pytest-asyncio pytest-mock httpx
 
+      - name: Prepare PostgreSQL Databases & Migrations
+        run: |
+          PGPASSWORD=postgrespassword psql -h 127.0.0.1 -U postgres -d gem_compliance -c "CREATE DATABASE bidguard_fresh_test;"
+          PGPASSWORD=postgrespassword psql -h 127.0.0.1 -U postgres -d gem_compliance -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bidguard_app') THEN CREATE ROLE bidguard_app WITH LOGIN PASSWORD 'bidguard_app_test_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS; END IF; END \$\$;"
+          cd backend
+          alembic upgrade head
+          DATABASE_URL="postgresql+asyncpg://postgres:postgrespassword@127.0.0.1:5432/bidguard_fresh_test" alembic upgrade head
+          PGPASSWORD=postgrespassword psql -h 127.0.0.1 -U postgres -d bidguard_fresh_test -c "GRANT USAGE ON SCHEMA public TO bidguard_app; GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bidguard_app; GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bidguard_app;"
+
       - name: Run Backend Tests
+        env:
+          DATABASE_URL: "postgresql+asyncpg://postgres:postgrespassword@127.0.0.1:5432/gem_compliance"
+          SYNC_DATABASE_URL: "postgresql://postgres:postgrespassword@127.0.0.1:5432/gem_compliance"
+          TESTING: "1"
         run: |
           cd backend
           pytest -v --ignore=sample_data
