@@ -1,6 +1,6 @@
 import { apiFetch, ApiError, performTokenRefresh } from "./api-client";
 import { clearAccessToken, notifySessionExpired, setAccessToken } from "./auth-store";
-import type { TokenResponse, UserProfile } from "./types";
+import type { InvitationAcceptRequest, TokenResponse, UserProfile } from "./types";
 
 /**
  * Retrieve the currently authenticated user's profile and effective RBAC permissions.
@@ -60,6 +60,40 @@ export async function restoreSession(): Promise<UserProfile | null> {
   } catch {
     clearAccessToken();
     return null;
+  }
+}
+
+/**
+ * Accept a single-use organization invitation, store the resulting access token in memory,
+ * and fetch the authenticated user profile.
+ */
+export async function acceptInvitationAndLogin(
+  payload: InvitationAcceptRequest
+): Promise<UserProfile> {
+  const tokenData = await apiFetch<TokenResponse>(
+    "/api/v1/auth/invitations/accept",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        email: payload.email.trim().toLowerCase(),
+      }),
+      skipAuth: true,
+    },
+    "Failed to accept invitation"
+  );
+
+  setAccessToken(tokenData.access_token, tokenData.expires_in);
+
+  try {
+    return await fetchCurrentUser();
+  } catch (err) {
+    clearAccessToken();
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(500, "Failed to load user profile after accepting invitation.");
   }
 }
 

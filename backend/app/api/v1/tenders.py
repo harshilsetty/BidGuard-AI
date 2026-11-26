@@ -1,9 +1,10 @@
+import asyncio
 import os
 import uuid
 import logging
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete, or_
 from sqlalchemy.orm import selectinload
@@ -15,12 +16,17 @@ from app.api.deps import (
     get_authorized_tender,
     validate_tender_tenant_access,
 )
+from app.models.audit import AuditLog
 from app.models.user import User
-from app.models.tender import Tender
+from app.models.tender import Tender, TenderDocument, TenderDocumentPage, TenderProcessingJob
 from app.models.clause import TenderClause
 from app.schemas.tender import (
     TenderResponse,
     TenderDetailResponse,
+    TenderDocumentResponse,
+    TenderDocumentPageResponse,
+    TenderDocumentPagesListResponse,
+    TenderProcessingJobResponse,
     ExtractionResultResponse,
 )
 from app.schemas.clause import (
@@ -33,6 +39,14 @@ from app.services.clause_extractor import (
     extract_clauses_from_tender_pages,
     CATEGORY_PREFIX_MAP,
 )
+from app.services.tender_upload_service import (
+    cleanup_stored_file,
+    resolve_tenant_storage_path,
+    sanitize_pdf_filename,
+    stream_validate_and_store_pdf,
+    validate_document_role,
+)
+from app.services.tender_processing_worker import ACTIVE_JOB_STATUSES, worker_manager
 
 logger = logging.getLogger(__name__)
 
@@ -47,44 +61,28 @@ async def upload_tender_pdf(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_permission("tender:create")),
 ):
-    """Upload a GeM Tender PDF and extract initial page structure using PyMuPDF."""
-    if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are supported."
-        )
+    """Upload a primary GeM Tender PDF with bounded streaming, SHA-256, and structural validation."""
+    safe_filename = sanitize_pdf_filename(file.filename)
+    tender_id = uuid.uuid4()
+    document_id = uuid.uuid4()
+    dest_path = resolve_tenant_storage_path(
+        organization_id=current_user.organization_id,
+        tender_id=tender_id,
+        document_id=document_id,
+    )
 
-    # Ensure upload directory exists
-    upload_dir = os.path.join(os.getcwd(), settings.UPLOAD_DIR)
-    os.makedirs(upload_dir, exist_ok=True)
+    file_size_bytes, sha256_hash, total_pages = await stream_validate_and_store_pdf(
+        upload_file=file,
+        dest_path=dest_path,
+    )
 
-    file_uuid = uuid.uuid4()
-    saved_filename = f"tender_{file_uuid}_{file.filename}"
-    file_path = os.path.join(upload_dir, saved_filename)
-
-    # Read and save file content
-    contents = await file.read()
-    with open(file_path, "wb") as f:
-        f.write(contents)
-
-    # Extract pages with PyMuPDF
-    try:
-        pages = extract_pages_from_pdf(contents)
-        total_pages = len(pages)
-    except Exception as e:
-        logger.error(f"Failed to extract PDF: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Failed to parse PDF document: {str(e)}"
-        )
-
-    # Create Tender record
     tender = Tender(
-        organization_id=current_user.organization_id if current_user else None,
-        title=title,
-        gem_tender_id=gem_tender_id,
-        file_name=file.filename,
-        file_path=file_path,
+        id=tender_id,
+        organization_id=current_user.organization_id,
+        title=title.strip(),
+        gem_tender_id=gem_tender_id.strip() if gem_tender_id else None,
+        file_name=safe_filename,
+        file_path=str(dest_path),
         total_pages=total_pages,
         extraction_status="UPLOADED",
         next_clause_seq={
@@ -93,12 +91,40 @@ async def upload_tender_pdf(
             "STAT": 1,
             "EXP": 1,
             "DEL": 1,
-            "GEN": 1
-        }
+            "GEN": 1,
+        },
     )
-    db.add(tender)
-    await db.commit()
-    await db.refresh(tender)
+    primary_doc = TenderDocument(
+        id=document_id,
+        tender_id=tender_id,
+        document_role="PRIMARY_NIT",
+        original_filename=safe_filename,
+        storage_path=str(dest_path),
+        file_size_bytes=file_size_bytes,
+        sha256_hash=sha256_hash,
+        total_pages=total_pages,
+        processing_status="UPLOADED",
+    )
+
+    try:
+        db.add(tender)
+        db.add(primary_doc)
+        db.add(
+            AuditLog(
+                organization_id=current_user.organization_id,
+                user_id=current_user.id,
+                action="TENDER_CREATED_WITH_DOCUMENT",
+                target_type="Tender",
+                target_id=str(tender_id),
+                diff_json={"document_id": str(document_id), "sha256": sha256_hash, "bytes": file_size_bytes},
+            )
+        )
+        await db.commit()
+        await db.refresh(tender)
+    except Exception:
+        await db.rollback()
+        cleanup_stored_file(dest_path)
+        raise
 
     return TenderResponse(
         id=tender.id,
@@ -109,8 +135,386 @@ async def upload_tender_pdf(
         extraction_status=tender.extraction_status,
         created_at=tender.created_at,
         updated_at=tender.updated_at,
-        clause_count=0
+        clause_count=0,
     )
+
+
+@router.post(
+    "/{tender_id}/documents",
+    response_model=TenderDocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_tender_document(
+    tender_id: UUID,
+    file: UploadFile = File(...),
+    document_role: str = Form("ANNEXURE"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Upload an additional PDF document (NIT, Technical Spec, BoQ, Corrigendum, Annexure) to a tender."""
+    tender = await get_authorized_tender(tender_id, current_user, db)
+    role_clean = validate_document_role(document_role)
+    safe_filename = sanitize_pdf_filename(file.filename)
+
+    document_id = uuid.uuid4()
+    dest_path = resolve_tenant_storage_path(
+        organization_id=tender.organization_id or current_user.organization_id,
+        tender_id=tender.id,
+        document_id=document_id,
+    )
+
+    file_size_bytes, sha256_hash, total_pages = await stream_validate_and_store_pdf(
+        upload_file=file,
+        dest_path=dest_path,
+    )
+
+    # Check duplicate SHA-256 within the same tender
+    dup_stmt = select(TenderDocument).where(
+        TenderDocument.tender_id == tender.id,
+        TenderDocument.sha256_hash == sha256_hash,
+    )
+    if (await db.execute(dup_stmt)).scalar_one_or_none():
+        cleanup_stored_file(dest_path)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Duplicate document: an identical PDF (matching SHA-256) is already attached to this tender.",
+        )
+
+    doc_record = TenderDocument(
+        id=document_id,
+        tender_id=tender.id,
+        document_role=role_clean,
+        original_filename=safe_filename,
+        storage_path=str(dest_path),
+        file_size_bytes=file_size_bytes,
+        sha256_hash=sha256_hash,
+        total_pages=total_pages,
+        processing_status="UPLOADED",
+    )
+
+    try:
+        db.add(doc_record)
+        db.add(
+            AuditLog(
+                organization_id=current_user.organization_id,
+                user_id=current_user.id,
+                action="TENDER_DOCUMENT_UPLOADED",
+                target_type="TenderDocument",
+                target_id=str(document_id),
+                diff_json={
+                    "tender_id": str(tender.id),
+                    "role": role_clean,
+                    "filename": safe_filename,
+                    "sha256": sha256_hash,
+                },
+            )
+        )
+        await db.commit()
+        await db.refresh(doc_record)
+    except Exception:
+        await db.rollback()
+        cleanup_stored_file(dest_path)
+        raise
+
+    return TenderDocumentResponse.model_validate(doc_record)
+
+
+@router.get("/{tender_id}/documents", response_model=List[TenderDocumentResponse])
+async def list_tender_documents(
+    tender_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """List tenant-scoped document metadata attached to a tender, including latest job state."""
+    await get_authorized_tender(tender_id, current_user, db)
+    stmt = (
+        select(TenderDocument)
+        .where(TenderDocument.tender_id == tender_id)
+        .order_by(TenderDocument.created_at.asc())
+    )
+    docs = (await db.execute(stmt)).scalars().all()
+
+    jobs_stmt = (
+        select(TenderProcessingJob)
+        .where(TenderProcessingJob.tender_id == tender_id)
+        .order_by(TenderProcessingJob.created_at.desc())
+    )
+    jobs = (await db.execute(jobs_stmt)).scalars().all()
+    latest_by_doc = {}
+    for j in jobs:
+        if j.tender_document_id not in latest_by_doc:
+            latest_by_doc[j.tender_document_id] = j
+
+    output = []
+    for d in docs:
+        resp = TenderDocumentResponse.model_validate(d)
+        if d.id in latest_by_doc:
+            resp.latest_job = TenderProcessingJobResponse.model_validate(latest_by_doc[d.id])
+        output.append(resp)
+    return output
+
+
+@router.post(
+    "/{tender_id}/documents/{document_id}/process",
+    response_model=TenderProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def enqueue_document_processing(
+    tender_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Enqueue persistent asynchronous PDF/OCR page extraction (idempotent for active jobs)."""
+    await get_authorized_tender(tender_id, current_user, db)
+
+    doc_record = (
+        await db.execute(
+            select(TenderDocument).where(
+                TenderDocument.id == document_id,
+                TenderDocument.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not doc_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tender document not found.",
+        )
+
+    idempotency_key = f"PAGE_EXTRACTION:{document_id}"
+    active_job = (
+        await db.execute(
+            select(TenderProcessingJob)
+            .where(
+                TenderProcessingJob.tender_document_id == document_id,
+                TenderProcessingJob.idempotency_key == idempotency_key,
+                TenderProcessingJob.status.in_(ACTIVE_JOB_STATUSES),
+            )
+            .order_by(TenderProcessingJob.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    if active_job:
+        return TenderProcessingJobResponse.model_validate(active_job)
+
+    job = TenderProcessingJob(
+        tender_id=tender_id,
+        tender_document_id=document_id,
+        job_type="PAGE_EXTRACTION",
+        status="QUEUED",
+        idempotency_key=idempotency_key,
+        retry_count=0,
+        max_retries=settings.JOB_DEFAULT_MAX_RETRIES,
+        progress_pct=0,
+        current_stage="QUEUED",
+    )
+    doc_record.processing_status = "QUEUED"
+    db.add(job)
+    db.add(
+        AuditLog(
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            action="TENDER_DOCUMENT_PROCESSING_ENQUEUED",
+            target_type="TenderProcessingJob",
+            target_id=str(document_id),
+            diff_json={"tender_id": str(tender_id), "job_type": "PAGE_EXTRACTION"},
+        )
+    )
+    await db.commit()
+    await db.refresh(job)
+
+    worker_manager.notify()
+    return TenderProcessingJobResponse.model_validate(job)
+
+
+@router.get(
+    "/{tender_id}/jobs/{job_id}",
+    response_model=TenderProcessingJobResponse,
+)
+async def get_tender_job_status(
+    tender_id: UUID,
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Retrieve persistent processing job status, stage, progress, and sanitized errors."""
+    await get_authorized_tender(tender_id, current_user, db)
+    job = (
+        await db.execute(
+            select(TenderProcessingJob).where(
+                TenderProcessingJob.id == job_id,
+                TenderProcessingJob.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found.")
+    return TenderProcessingJobResponse.model_validate(job)
+
+
+@router.post(
+    "/{tender_id}/jobs/{job_id}/retry",
+    response_model=TenderProcessingJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def retry_tender_job(
+    tender_id: UUID,
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:update")),
+):
+    """Retry an eligible FAILED processing job while preserving prior error metadata in audit logs."""
+    await get_authorized_tender(tender_id, current_user, db)
+    job = (
+        await db.execute(
+            select(TenderProcessingJob).where(
+                TenderProcessingJob.id == job_id,
+                TenderProcessingJob.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Processing job not found.")
+
+    if job.status != "FAILED":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Only FAILED jobs can be retried (current status: {job.status}).",
+        )
+
+    if job.retry_count >= job.max_retries:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Maximum retry count has been exhausted for this job.",
+        )
+
+    existing_active = (
+        await db.execute(
+            select(TenderProcessingJob).where(
+                TenderProcessingJob.tender_document_id == job.tender_document_id,
+                TenderProcessingJob.status.in_(ACTIVE_JOB_STATUSES),
+                TenderProcessingJob.id != job.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Another active processing job is already running for this document.",
+        )
+
+    prev_error = {"error_code": job.error_code, "error_message": job.error_message}
+    job.retry_count += 1
+    job.status = "QUEUED"
+    job.current_stage = "QUEUED"
+    job.progress_pct = 0
+    job.worker_id = None
+    job.lease_expires_at = None
+    job.heartbeat_at = None
+    job.completed_at = None
+    job.error_code = None
+    job.error_message = None
+
+    doc_record = (
+        await db.execute(
+            select(TenderDocument).where(TenderDocument.id == job.tender_document_id)
+        )
+    ).scalar_one_or_none()
+    if doc_record:
+        doc_record.processing_status = "QUEUED"
+
+    db.add(
+        AuditLog(
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            action="TENDER_PROCESSING_JOB_RETRIED",
+            target_type="TenderProcessingJob",
+            target_id=str(job.id),
+            diff_json={"retry_count": job.retry_count, "previous_error": prev_error},
+        )
+    )
+    await db.commit()
+    await db.refresh(job)
+
+    worker_manager.notify()
+    return TenderProcessingJobResponse.model_validate(job)
+
+
+@router.get(
+    "/{tender_id}/documents/{document_id}/pages",
+    response_model=TenderDocumentPagesListResponse,
+)
+async def list_tender_document_pages(
+    tender_id: UUID,
+    document_id: UUID,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Retrieve paginated persisted page-level extraction results for a tender document."""
+    await get_authorized_tender(tender_id, current_user, db)
+    doc_record = (
+        await db.execute(
+            select(TenderDocument).where(
+                TenderDocument.id == document_id,
+                TenderDocument.tender_id == tender_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not doc_record:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tender document not found.")
+
+    total = (
+        await db.execute(
+            select(func.count(TenderDocumentPage.id)).where(
+                TenderDocumentPage.tender_document_id == document_id
+            )
+        )
+    ).scalar() or 0
+
+    rows = (
+        await db.execute(
+            select(TenderDocumentPage)
+            .where(TenderDocumentPage.tender_document_id == document_id)
+            .order_by(TenderDocumentPage.page_number.asc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+
+    return TenderDocumentPagesListResponse(
+        tender_id=tender_id,
+        tender_document_id=document_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[TenderDocumentPageResponse.model_validate(r) for r in rows],
+    )
+
+
+@router.get("/{tender_id}/documents/{document_id}", response_model=TenderDocumentResponse)
+async def get_tender_document_metadata(
+    tender_id: UUID,
+    document_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("tender:read")),
+):
+    """Retrieve metadata for a specific document belonging to an authorized tender."""
+    await get_authorized_tender(tender_id, current_user, db)
+    stmt = select(TenderDocument).where(
+        TenderDocument.id == document_id,
+        TenderDocument.tender_id == tender_id,
+    )
+    doc_record = (await db.execute(stmt)).scalar_one_or_none()
+    if not doc_record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Tender document not found.",
+        )
+    return TenderDocumentResponse.model_validate(doc_record)
 
 
 @router.post("/{tender_id}/extract", response_model=ExtractionResultResponse)
@@ -133,7 +537,7 @@ async def extract_tender_clauses(
         with open(tender.file_path, "rb") as f:
             pdf_bytes = f.read()
 
-        pages_data = extract_pages_from_pdf(pdf_bytes)
+        pages_data = await asyncio.to_thread(extract_pages_from_pdf, pdf_bytes)
 
         # Run extraction using sliding windows + NVIDIA NIM
         current_seq = tender.next_clause_seq or {}
@@ -236,7 +640,7 @@ async def get_tender_detail(
     """Get tender details and all associated clauses."""
     stmt = (
         select(Tender)
-        .options(selectinload(Tender.clauses))
+        .options(selectinload(Tender.clauses), selectinload(Tender.documents))
         .where(Tender.id == tender_id)
     )
     result = await db.execute(stmt)
@@ -255,7 +659,8 @@ async def get_tender_detail(
         extraction_status=tender.extraction_status,
         created_at=tender.created_at,
         updated_at=tender.updated_at,
-        clauses=[ClauseResponse.model_validate(c) for c in sorted(tender.clauses, key=lambda x: x.clause_code)]
+        clauses=[ClauseResponse.model_validate(c) for c in sorted(tender.clauses, key=lambda x: x.clause_code)],
+        documents=[TenderDocumentResponse.model_validate(d) for d in tender.documents],
     )
 
 

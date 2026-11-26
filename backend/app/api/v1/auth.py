@@ -18,6 +18,7 @@ from app.schemas.auth import (
     InvitationCreateRequest,
     InvitationCreateResponse,
     InvitationAcceptRequest,
+    InvitationValidateResponse,
 )
 from app.services.auth_service import AuthService
 from app.services.rbac_service import RBACService
@@ -153,6 +154,22 @@ async def create_invitation(
         expires_at=inv.expires_at,
         invitation_token=raw_token,
     )
+
+
+@router.get(
+    "/invitations/validate",
+    response_model=InvitationValidateResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Validate an invitation token before acceptance",
+)
+async def validate_invitation(
+    token: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    _enforce_rate_limit(request, "invite_validate")
+    result = await AuthService.validate_invitation_token(token, db)
+    return InvitationValidateResponse(**result)
 
 
 @router.post(

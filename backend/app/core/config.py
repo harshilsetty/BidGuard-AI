@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     # Uploads & Storage
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
+    MAX_TENDER_PDF_PAGES: int = 500
+
+    # Asynchronous Document Processing Worker (Phase 2.0B)
+    JOB_LEASE_SECONDS: int = 120
+    JOB_HEARTBEAT_SECONDS: int = 15
+    JOB_POLL_INTERVAL_SECONDS: float = 2.0
+    JOB_MAX_CONCURRENT_WORKERS: int = 2
+    JOB_DEFAULT_MAX_RETRIES: int = 3
 
     # Authentication & Security (Phase 1 Enterprise)
     JWT_SECRET_KEY: str = KNOWN_INSECURE_JWT_SECRET

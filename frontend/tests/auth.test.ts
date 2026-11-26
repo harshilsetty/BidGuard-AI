@@ -11,9 +11,15 @@ import {
 import {
   apiFetch,
   ApiError,
+  fetchTenderDocumentPages,
+  fetchTenderDocuments,
+  fetchTenderJobStatus,
   fetchTenders,
   performTokenRefresh,
+  processTenderDocument,
+  retryTenderJob,
   triggerClauseExtraction,
+  uploadTenderDocument,
 } from "../src/lib/api-client";
 import {
   loginWithCredentials,
@@ -22,7 +28,12 @@ import {
 } from "../src/lib/auth-service";
 import {
   canAccessRoute,
+  canPerformAction,
   getAuthorizedNavItems,
+  getRoleWorkspaceMetadata,
+  hasAllPermissions,
+  hasAnyPermission,
+  hasPermission,
   isPublicRoute,
   sanitizeRedirectPath,
 } from "../src/lib/rbac";
@@ -345,7 +356,7 @@ test("RBAC & Route Protection: enforces public, authenticated, and role-restrict
   assert.equal(canAccessRoute(null, "/"), false);
   assert.equal(canAccessRoute(null, "/tenders/new"), false);
 
-  // BIDDER role: tender:read + evaluation:read only
+  // BIDDER role: tender:read + evaluation:read only (no organization:read, no audit:read)
   const bidder = makeProfile({
     roles: ["BIDDER"],
     permissions: ["tender:read", "evaluation:read"],
@@ -353,12 +364,17 @@ test("RBAC & Route Protection: enforces public, authenticated, and role-restrict
   assert.equal(canAccessRoute(bidder, "/"), true);
   assert.equal(canAccessRoute(bidder, "/tenders/abc/compliance"), true);
   assert.equal(canAccessRoute(bidder, "/tenders/new"), false);
+  assert.equal(canAccessRoute(bidder, "/organization"), false);
+  assert.equal(canAccessRoute(bidder, "/audit"), false);
+  assert.equal(isPublicRoute("/invite/accept"), true);
+  assert.equal(canAccessRoute(null, "/invite/accept"), true);
   assert.deepEqual(
     getAuthorizedNavItems(bidder).map((n) => n.href),
     ["/", "/mock-data"]
   );
+  assert.equal(getRoleWorkspaceMetadata(bidder).role, "BIDDER");
 
-  // AUDITOR role: read-only, no tender:create
+  // AUDITOR role: read-only, has organization:read + audit:read, no tender:create
   const auditor = makeProfile({
     roles: ["AUDITOR"],
     permissions: [
@@ -371,18 +387,44 @@ test("RBAC & Route Protection: enforces public, authenticated, and role-restrict
     ],
   });
   assert.equal(canAccessRoute(auditor, "/tenders/new"), false);
+  assert.equal(canAccessRoute(auditor, "/organization"), true);
+  assert.equal(canAccessRoute(auditor, "/audit"), true);
+  assert.equal(canPerformAction(auditor, "evaluation:override"), false);
   assert.deepEqual(
     getAuthorizedNavItems(auditor).map((n) => n.href),
-    ["/", "/mock-data"]
+    ["/", "/organization", "/audit", "/mock-data"]
   );
+  assert.equal(getRoleWorkspaceMetadata(auditor).role, "AUDITOR");
 
-  // PROCUREMENT_OFFICER role: has tender:create
+  // PROCUREMENT_OFFICER role: has tender:create, organization:read, audit:read
   const officer = makeProfile();
   assert.equal(canAccessRoute(officer, "/tenders/new"), true);
+  assert.equal(canAccessRoute(officer, "/organization"), true);
+  assert.equal(canAccessRoute(officer, "/audit"), true);
+  assert.equal(canPerformAction(officer, ["tender:create", "evaluation:run"]), true);
+  assert.equal(hasAnyPermission(officer, ["user:manage", "tender:create"]), true);
+  assert.equal(hasAllPermissions(officer, ["user:manage", "tender:create"]), false);
   assert.deepEqual(
     getAuthorizedNavItems(officer).map((n) => n.href),
-    ["/", "/tenders/new", "/mock-data"]
+    ["/", "/tenders/new", "/organization", "/audit", "/mock-data"]
   );
+  assert.equal(getRoleWorkspaceMetadata(officer).role, "PROCUREMENT_OFFICER");
+
+  // ORG_ADMIN role: org admin + procurement
+  const orgAdmin = makeProfile({
+    roles: ["ORG_ADMIN"],
+    permissions: ["organization:read", "organization:update", "user:invite", "user:manage", "tender:create", "tender:read", "evaluation:read", "audit:read"],
+  });
+  assert.equal(canAccessRoute(orgAdmin, "/organization"), true);
+  assert.equal(canAccessRoute(orgAdmin, "/audit"), true);
+  assert.equal(getRoleWorkspaceMetadata(orgAdmin).role, "ORG_ADMIN");
+
+  // SUPER_ADMIN role: platform governance
+  const superAdmin = makeProfile({ roles: ["SUPER_ADMIN"], permissions: [] });
+  assert.equal(hasPermission(superAdmin, "tender:delete"), true);
+  assert.equal(canAccessRoute(superAdmin, "/organization"), true);
+  assert.equal(canAccessRoute(superAdmin, "/audit"), true);
+  assert.equal(getRoleWorkspaceMetadata(superAdmin).role, "SUPER_ADMIN");
 
   // Redirect sanitization prevents open redirects
   assert.equal(sanitizeRedirectPath("https://evil.example"), "/");
@@ -411,5 +453,163 @@ test("Single-flight refresh: direct concurrent performTokenRefresh calls coalesc
 
   assert.equal(calls, 1);
   assert.deepEqual(tokens, ["coalesced-token", "coalesced-token", "coalesced-token"]);
+  clearAccessToken();
+});
+
+test("Error handling: network failure, 429 rate limit, 500, and malformed JSON return clean ApiError", async () => {
+  resetAuthStoreForTest();
+  setAccessToken("valid-token", 900);
+
+  // Network failure -> ApiError(0, ...)
+  (globalThis as any).fetch = async () => {
+    throw new TypeError("Failed to fetch");
+  };
+  await assert.rejects(
+    () => apiFetch("/api/v1/tenders"),
+    (err: unknown) => err instanceof ApiError && err.status === 0
+  );
+
+  // 429 rate limit
+  (globalThis as any).fetch = async () =>
+    new Response(JSON.stringify({ detail: "Too many requests" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    });
+  await assert.rejects(
+    () => apiFetch("/api/v1/tenders"),
+    (err: unknown) => err instanceof ApiError && err.status === 429
+  );
+
+  // 500 with malformed non-JSON body
+  (globalThis as any).fetch = async () =>
+    new Response("Internal Server Error", { status: 500 });
+  await assert.rejects(
+    () => apiFetch("/api/v1/tenders", {}, "Server error fallback"),
+    (err: unknown) =>
+      err instanceof ApiError && err.status === 500 && err.detail === "Server error fallback"
+  );
+  clearAccessToken();
+});
+
+test("Phase 2.0A: tender multi-document upload, listing, duplicate 409, and permission gating", async () => {
+  resetAuthStoreForTest();
+  setAccessToken("officer-token", 900);
+
+  const mockDoc = {
+    id: "doc-1",
+    tender_id: "tender-1",
+    document_role: "CORRIGENDUM",
+    original_filename: "corrigendum_1.pdf",
+    file_size_bytes: 1024,
+    sha256_hash: "a".repeat(64),
+    total_pages: 2,
+    processing_status: "UPLOADED",
+    created_at: "2026-11-26T00:00:00Z",
+    updated_at: "2026-11-26T00:00:00Z",
+  };
+
+  (globalThis as any).fetch = async (url: string, init: RequestInit = {}) => {
+    if (url.endsWith("/api/v1/tenders/tender-1/documents") && init.method === "POST") {
+      return new Response(JSON.stringify(mockDoc), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.endsWith("/api/v1/tenders/tender-1/documents") && (!init.method || init.method === "GET")) {
+      return new Response(JSON.stringify([mockDoc]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])], "corrigendum_1.pdf", {
+    type: "application/pdf",
+  });
+  const uploaded = await uploadTenderDocument("tender-1", file, "CORRIGENDUM");
+  assert.equal(uploaded.id, "doc-1");
+  assert.equal(uploaded.document_role, "CORRIGENDUM");
+
+  const list = await fetchTenderDocuments("tender-1");
+  assert.equal(list.length, 1);
+
+  // Duplicate 409 handling
+  (globalThis as any).fetch = async () =>
+    new Response(JSON.stringify({ detail: "Duplicate document" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
+  await assert.rejects(
+    () => uploadTenderDocument("tender-1", file, "CORRIGENDUM"),
+    (err: unknown) => err instanceof ApiError && err.status === 409
+  );
+
+  // Permission gating for upload UI
+  const officer = makeProfile();
+  const auditor = makeProfile({ roles: ["AUDITOR"], permissions: ["tender:read"] });
+  assert.equal(hasPermission(officer, "tender:update"), true);
+  assert.equal(hasPermission(auditor, "tender:update"), false);
+  clearAccessToken();
+});
+
+test("Phase 2.0B: async document processing enqueue (202), job polling, retry, and page retrieval", async () => {
+  resetAuthStoreForTest();
+  setAccessToken("officer-token", 900);
+
+  const mockJob = {
+    id: "job-1",
+    tender_id: "tender-1",
+    tender_document_id: "doc-1",
+    job_type: "PAGE_EXTRACTION",
+    status: "QUEUED",
+    current_stage: "QUEUED",
+    progress_pct: 0,
+    retry_count: 0,
+    max_retries: 3,
+    created_at: "2026-11-26T00:00:00Z",
+    updated_at: "2026-11-26T00:00:00Z",
+  };
+
+  (globalThis as any).fetch = async (url: string, init: RequestInit = {}) => {
+    if (url.endsWith("/documents/doc-1/process") && init.method === "POST") {
+      return new Response(JSON.stringify(mockJob), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.endsWith("/jobs/job-1") && (!init.method || init.method === "GET")) {
+      return new Response(
+        JSON.stringify({ ...mockJob, status: "SUCCEEDED", current_stage: "FINALIZING", progress_pct: 100 }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (url.endsWith("/jobs/job-1/retry") && init.method === "POST") {
+      return new Response(JSON.stringify({ ...mockJob, retry_count: 1 }), {
+        status: 202,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url.includes("/documents/doc-1/pages")) {
+      return new Response(
+        JSON.stringify({ tender_id: "tender-1", tender_document_id: "doc-1", total: 1, limit: 20, offset: 0, items: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  const enqueued = await processTenderDocument("tender-1", "doc-1");
+  assert.equal(enqueued.status, "QUEUED");
+
+  const polled = await fetchTenderJobStatus("tender-1", "job-1");
+  assert.equal(polled.status, "SUCCEEDED");
+  assert.equal(polled.progress_pct, 100);
+
+  const retried = await retryTenderJob("tender-1", "job-1");
+  assert.equal(retried.retry_count, 1);
+
+  const pages = await fetchTenderDocumentPages("tender-1", "doc-1");
+  assert.equal(pages.total, 1);
   clearAccessToken();
 });

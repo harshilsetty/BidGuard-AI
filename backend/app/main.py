@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.api.router import api_router
 from app.api.v1.health import health_check
+from app.services.tender_processing_worker import worker_manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,7 +21,9 @@ async def lifespan(app: FastAPI):
     settings.validate_production_security()
     # Initialize database extensions and tables
     await init_db()
+    await worker_manager.start()
     yield
+    await worker_manager.stop()
     logger.info("Shutting down GeM Compliance Verification Platform Backend...")
 
 

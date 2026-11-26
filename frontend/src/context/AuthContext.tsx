@@ -2,9 +2,14 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { subscribeSessionExpired } from "@/lib/auth-store";
-import { loginWithCredentials, logoutSession, restoreSession } from "@/lib/auth-service";
+import {
+  acceptInvitationAndLogin,
+  loginWithCredentials,
+  logoutSession,
+  restoreSession,
+} from "@/lib/auth-service";
 import { hasPermission as checkPerm, hasRole as checkRole } from "@/lib/rbac";
-import type { AuthStatus, UserProfile } from "@/lib/types";
+import type { AuthStatus, InvitationAcceptRequest, UserProfile } from "@/lib/types";
 
 export interface AuthContextValue {
   status: AuthStatus;
@@ -16,6 +21,7 @@ export interface AuthContextValue {
   sessionNotice: "session_expired" | "logged_out" | null;
   clearSessionNotice: () => void;
   login: (email: string, password: string) => Promise<UserProfile>;
+  acceptInvitation: (payload: InvitationAcceptRequest) => Promise<UserProfile>;
   logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
   hasRole: (role: string) => boolean;
@@ -67,6 +73,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return profile;
   }, []);
 
+  const acceptInvitation = useCallback(
+    async (payload: InvitationAcceptRequest): Promise<UserProfile> => {
+      const profile = await acceptInvitationAndLogin(payload);
+      setSessionNotice(null);
+      setUser(profile);
+      setStatus("authenticated");
+      return profile;
+    },
+    []
+  );
+
   const logout = useCallback(async () => {
     await logoutSession();
     setUser(null);
@@ -99,11 +116,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionNotice,
       clearSessionNotice,
       login,
+      acceptInvitation,
       logout,
       hasPermission,
       hasRole,
     }),
-    [status, user, sessionNotice, clearSessionNotice, login, logout, hasPermission, hasRole]
+    [status, user, sessionNotice, clearSessionNotice, login, acceptInvitation, logout, hasPermission, hasRole]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

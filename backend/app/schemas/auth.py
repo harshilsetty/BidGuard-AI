@@ -100,6 +100,17 @@ class InvitationAcceptRequest(BaseModel):
         return v.strip().lower()
 
 
+class InvitationValidateResponse(BaseModel):
+    """Safe invitation metadata returned during pre-acceptance validation."""
+    valid: bool
+    status: str  # PENDING | EXPIRED | REVOKED | ACCEPTED | INVALID
+    organization_name: Optional[str] = None
+    role_name: Optional[str] = None
+    email_masked: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    requires_existing_login: bool = False
+
+
 class UserProfileResponse(BaseModel):
     """Current authenticated user profile view."""
     id: UUID

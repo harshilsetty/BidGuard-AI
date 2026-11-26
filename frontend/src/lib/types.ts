@@ -602,3 +602,195 @@ export interface UserProfile {
   last_login_at?: string | null;
   created_at: string;
 }
+
+// ====================================================
+// Phase 1.2 Organization, Membership & Invitation Types
+// ====================================================
+
+export interface OrganizationProfile {
+  id: string;
+  name: string;
+  slug: string;
+  domain?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  total_members: number;
+  active_members: number;
+  pending_invitations: number;
+}
+
+export interface OrganizationUpdateRequest {
+  name?: string;
+  domain?: string | null;
+}
+
+export interface RoleSummary {
+  name: string;
+  description: string;
+  scope: string;
+  assignable_by_org_admin: boolean;
+  permissions: string[];
+}
+
+export interface OrganizationMember {
+  id: string;
+  email: string;
+  full_name: string;
+  organization_id: string;
+  roles: string[];
+  is_active: boolean;
+  is_verified: boolean;
+  last_login_at?: string | null;
+  created_at: string;
+}
+
+export interface OrganizationMemberListResponse {
+  items: OrganizationMember[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export type InvitationLifecycleStatus = "PENDING" | "ACCEPTED" | "EXPIRED" | "REVOKED";
+
+export interface OrganizationInvitationItem {
+  id: string;
+  organization_id: string;
+  email: string;
+  role_name: string;
+  status: InvitationLifecycleStatus;
+  expires_at: string;
+  accepted_at?: string | null;
+  revoked_at?: string | null;
+  invited_by_user_id?: string | null;
+  created_at: string;
+}
+
+export interface OrganizationInvitationListResponse {
+  items: OrganizationInvitationItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface InvitationCreateResponse {
+  id: string;
+  email: string;
+  role_name: string;
+  organization_id: string;
+  expires_at: string;
+  invitation_token: string;
+  email_delivery_status: string;
+}
+
+export interface InvitationValidateResponse {
+  valid: boolean;
+  status: "PENDING" | "EXPIRED" | "REVOKED" | "ACCEPTED" | "INVALID";
+  organization_name?: string | null;
+  role_name?: string | null;
+  email_masked?: string | null;
+  expires_at?: string | null;
+  requires_existing_login: boolean;
+}
+
+export interface InvitationAcceptRequest {
+  invitation_token: string;
+  email: string;
+  password: string;
+  full_name: string;
+}
+
+// ====================================================
+// Phase 1.3 Audit Trail Types
+// ====================================================
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: string;
+  organization_id?: string | null;
+  user_id?: string | null;
+  user_email?: string | null;
+  action: string;
+  target_type?: string | null;
+  target_id?: string | null;
+  ip_address?: string | null;
+  user_agent?: string | null;
+  diff_json?: Record<string, any> | null;
+}
+
+export interface AuditLogListResponse {
+  items: AuditLogEntry[];
+  total: number;
+}
+
+// ====================================================
+// Phase 2.0A Multi-Document Tender Types
+// ====================================================
+
+export type TenderDocumentRole =
+  | "PRIMARY_NIT"
+  | "TECHNICAL_SPEC"
+  | "BOQ"
+  | "CORRIGENDUM"
+  | "ANNEXURE"
+  | "OTHER";
+
+export type ProcessingJobStatus =
+  | "QUEUED"
+  | "RUNNING"
+  | "RETRY_WAIT"
+  | "SUCCEEDED"
+  | "FAILED";
+
+export interface TenderProcessingJob {
+  id: string;
+  tender_id: string;
+  tender_document_id: string;
+  job_type: string;
+  status: ProcessingJobStatus;
+  current_stage: string;
+  progress_pct: number;
+  retry_count: number;
+  max_retries: number;
+  error_code?: string | null;
+  error_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TenderDocumentPage {
+  id: string;
+  tender_document_id: string;
+  page_number: number;
+  extracted_text: string;
+  word_count: number;
+  extraction_method: string;
+  ocr_confidence?: number | null;
+  extraction_status: string;
+}
+
+export interface TenderDocumentPagesListResponse {
+  tender_id: string;
+  tender_document_id: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: TenderDocumentPage[];
+}
+
+export interface TenderDocument {
+  id: string;
+  tender_id: string;
+  document_role: TenderDocumentRole;
+  original_filename: string;
+  file_size_bytes: number;
+  sha256_hash: string;
+  total_pages?: number | null;
+  processing_status: string;
+  created_at: string;
+  updated_at: string;
+  latest_job?: TenderProcessingJob | null;
+}

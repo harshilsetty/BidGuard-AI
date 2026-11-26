@@ -10,6 +10,7 @@ import {
   confirmTenderClauses,
 } from "@/lib/api-client";
 import { Tender, TenderClause, ClauseCreateInput } from "@/lib/types";
+import { TenderDocumentsPanel } from "@/components/TenderDocumentsPanel";
 import {
   CheckCircle2,
   AlertCircle,
@@ -257,6 +258,9 @@ export default function TenderClausesPage({
           </div>
         </div>
       </div>
+
+      {/* Phase 2.0A Multi-Document Attachments */}
+      <TenderDocumentsPanel tenderId={tenderId} />
 
       {successMsg && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-3 text-[#28A745] text-sm">

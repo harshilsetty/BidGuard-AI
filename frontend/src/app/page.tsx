@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
+import { getRoleWorkspaceMetadata } from "@/lib/rbac";
 import { fetchSystemHealth, fetchNvidiaHealth, fetchTenders } from "@/lib/api-client";
 import { SystemHealth, NvidiaHealth, Tender } from "@/lib/types";
 import {
@@ -20,7 +21,8 @@ import {
 } from "lucide-react";
 
 export default function HomePage() {
-  const { hasPermission } = useAuth();
+  const { user, organizationName, hasPermission } = useAuth();
+  const workspaceMeta = getRoleWorkspaceMetadata(user);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [nvidiaHealth, setNvidiaHealth] = useState<NvidiaHealth | null>(null);
   const [tenders, setTenders] = useState<Tender[]>([]);
@@ -71,28 +73,46 @@ export default function HomePage() {
 
   return (
     <div className="space-y-8">
-      {/* Hero Section - Official Government Navy Surface */}
-      <div className="bg-[#0F2D5B] border border-[#0F2D5B] rounded-xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 text-white">
+      {/* Role-Aware Workspace Header - Official Midnight Navy Surface */}
+      <div className="bg-[#101C32] border border-[#101C32] rounded-xl p-6 sm:p-8 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 text-white">
         <div className="space-y-3 max-w-3xl">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/10 text-white border border-white/20">
-              SIH26100 • GeM Procurement Evaluation
+              {workspaceMeta.role} • {organizationName || "Organization"}
             </span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1F4E9E]/60 text-blue-100 border border-blue-400/30">
-              Sandbox Demonstration • Synthetic Procurement Data
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-[#1769AA]/60 text-blue-100 border border-blue-400/30">
+              {workspaceMeta.accessSummary}
             </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-            AI-Powered Bid Compliance Verification
+            {workspaceMeta.title}
           </h1>
           <p className="text-sm sm:text-base text-blue-100 leading-relaxed font-normal">
-            Evidence-backed verification of tender requirements and bidder submissions.
+            {workspaceMeta.subtitle}
           </p>
-          <p className="text-xs text-blue-200/80 font-medium tracking-wide">
-            AI assists. Evidence explains. Rules verify. Humans decide.
-          </p>
+          {workspaceMeta.futureBoundaryNote && (
+            <p className="text-xs text-amber-200/90 font-medium">
+              Module Boundary: {workspaceMeta.futureBoundaryNote}
+            </p>
+          )}
         </div>
-        <div className="flex items-center space-x-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {hasPermission("organization:read") && (
+            <Link
+              href="/organization"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition border border-white/20"
+            >
+              <span>Organization</span>
+            </Link>
+          )}
+          {hasPermission("audit:read") && (
+            <Link
+              href="/audit"
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition border border-white/20"
+            >
+              <span>Audit Logs</span>
+            </Link>
+          )}
           <button
             onClick={checkHealth}
             disabled={loading}
@@ -105,7 +125,7 @@ export default function HomePage() {
           {hasPermission("tender:create") && (
             <Link
               href="/tenders/new"
-              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-sm font-semibold transition shadow-sm border border-blue-400/30"
+              className="inline-flex items-center space-x-2 px-4 py-2.5 bg-[#1769AA] hover:bg-[#13568c] text-white rounded-lg text-sm font-semibold transition shadow-sm border border-blue-400/30"
             >
               <Plus className="w-4 h-4" />
               <span>Upload Tender</span>
@@ -232,12 +252,14 @@ export default function HomePage() {
               Active Tender Documents
             </h2>
           </div>
-          <Link
-            href="/tenders/new"
-            className="text-xs text-[#1F4E9E] hover:text-[#2E73D6] transition font-semibold"
-          >
-            + Upload New
-          </Link>
+          {hasPermission("tender:create") && (
+            <Link
+              href="/tenders/new"
+              className="text-xs text-[#1769AA] hover:text-[#13568c] transition font-semibold"
+            >
+              + Upload New
+            </Link>
+          )}
         </div>
 
         {tenders.length === 0 ? (
@@ -245,17 +267,21 @@ export default function HomePage() {
             <FileText className="w-10 h-10 text-slate-300 mx-auto" />
             <p className="text-sm text-[#2B3A55] font-medium">No tenders ingested yet.</p>
             <p className="text-xs text-[#6B7C93]">
-              Upload a GeM Tender Notice / NIT document to trigger AI requirement extraction.
+              {hasPermission("tender:create")
+                ? "Upload a GeM Tender Notice / NIT document to trigger AI requirement extraction."
+                : "No tenders are currently available for your organization."}
             </p>
-            <div className="pt-2">
-              <Link
-                href="/tenders/new"
-                className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#1F4E9E] hover:bg-[#2E73D6] text-white rounded-lg text-xs font-semibold transition shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Upload First Tender</span>
-              </Link>
-            </div>
+            {hasPermission("tender:create") && (
+              <div className="pt-2">
+                <Link
+                  href="/tenders/new"
+                  className="inline-flex items-center space-x-1.5 px-4 py-2 bg-[#1769AA] hover:bg-[#13568c] text-white rounded-lg text-xs font-semibold transition shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Upload First Tender</span>
+                </Link>
+              </div>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-[#E9EEF5]">

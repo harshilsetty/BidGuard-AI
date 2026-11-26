@@ -419,17 +419,47 @@ class AuthService:
                 detail="Cannot invite SUPER_ADMIN via organization invitation.",
             )
 
+        org = (await db.execute(select(Organization).where(Organization.id == organization_id))).scalar_one_or_none()
+        if not org or not org.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization is inactive or unavailable.",
+            )
+
         await RBACService.ensure_system_roles_and_permissions(db)
         role_stmt = select(Role).where(Role.name == role_name)
         role_obj = (await db.execute(role_stmt)).scalar_one_or_none()
         if not role_obj:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid role '{role_name}'.")
 
-        raw_token = generate_secure_token(32)
+        email_clean = email.lower().strip()
         now = datetime.now(timezone.utc)
+
+        await cls._enable_auth_lookup(db, org_id=organization_id)
+        existing_user = (await db.execute(select(User).where(User.email == email_clean))).scalar_one_or_none()
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A user with this email is already registered.",
+            )
+
+        dup_stmt = select(OrganizationInvitation).where(
+            OrganizationInvitation.organization_id == organization_id,
+            OrganizationInvitation.email == email_clean,
+            OrganizationInvitation.accepted_at.is_(None),
+            OrganizationInvitation.revoked_at.is_(None),
+            OrganizationInvitation.expires_at > now,
+        )
+        if (await db.execute(dup_stmt)).scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An active pending invitation already exists for this email.",
+            )
+
+        raw_token = generate_secure_token(32)
         inv = OrganizationInvitation(
             organization_id=organization_id,
-            email=email.lower().strip(),
+            email=email_clean,
             role_name=role_name,
             token_hash=hash_token(raw_token),
             expires_at=now + timedelta(hours=expires_hours),
@@ -442,13 +472,65 @@ class AuthService:
                 user_id=invited_by.id,
                 action="AUTH_INVITATION_CREATED",
                 target_type="OrganizationInvitation",
-                target_id=email.lower().strip(),
+                target_id=email_clean,
                 diff_json={"role_name": role_name, "expires_hours": expires_hours},
             )
         )
         await db.commit()
         await db.refresh(inv)
         return raw_token, inv
+
+    @classmethod
+    async def validate_invitation_token(
+        cls,
+        invitation_token: str,
+        db: AsyncSession,
+    ) -> dict:
+        """Validate an invitation token safely without creating accounts or leaking invalid-token data."""
+        if not invitation_token or len(invitation_token.strip()) < 16:
+            return {"valid": False, "status": "INVALID", "requires_existing_login": False}
+
+        await cls._enable_auth_lookup(db)
+        token_hash = hash_token(invitation_token.strip())
+        inv = (
+            await db.execute(
+                select(OrganizationInvitation).where(OrganizationInvitation.token_hash == token_hash)
+            )
+        ).scalar_one_or_none()
+
+        if not inv:
+            return {"valid": False, "status": "INVALID", "requires_existing_login": False}
+        if inv.revoked_at is not None:
+            return {"valid": False, "status": "REVOKED", "requires_existing_login": False}
+        if inv.accepted_at is not None:
+            return {"valid": False, "status": "ACCEPTED", "requires_existing_login": False}
+
+        now = datetime.now(timezone.utc)
+        expires_at = inv.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at < now:
+            return {"valid": False, "status": "EXPIRED", "requires_existing_login": False}
+
+        org = (await db.execute(select(Organization).where(Organization.id == inv.organization_id))).scalar_one_or_none()
+        if not org or not org.is_active:
+            return {"valid": False, "status": "INVALID", "requires_existing_login": False}
+
+        existing_user = (await db.execute(select(User).where(User.email == inv.email))).scalar_one_or_none()
+
+        local_part, _, domain_part = inv.email.partition("@")
+        masked_local = (local_part[:2] + "***") if len(local_part) > 2 else "***"
+        email_masked = f"{masked_local}@{domain_part}" if domain_part else masked_local
+
+        return {
+            "valid": True,
+            "status": "PENDING",
+            "organization_name": org.name,
+            "role_name": inv.role_name,
+            "email_masked": email_masked,
+            "expires_at": expires_at,
+            "requires_existing_login": existing_user is not None,
+        }
 
     @classmethod
     async def accept_invitation(
@@ -466,17 +548,19 @@ class AuthService:
         if not is_valid:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=err_msg)
 
+        await cls._enable_auth_lookup(db)
         email_clean = email.lower().strip()
         token_hash = hash_token(invitation_token)
         now = datetime.now(timezone.utc)
 
-        # Atomic single-use claim
+        # Atomic single-use claim (must not be accepted or revoked)
         claim_stmt = (
             update(OrganizationInvitation)
             .where(
                 OrganizationInvitation.token_hash == token_hash,
                 OrganizationInvitation.email == email_clean,
                 OrganizationInvitation.accepted_at.is_(None),
+                OrganizationInvitation.revoked_at.is_(None),
             )
             .values(accepted_at=now)
         )
@@ -484,7 +568,7 @@ class AuthService:
         if claim_res.rowcount == 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid, expired, or already-used invitation token.",
+                detail="Invalid, expired, revoked, or already-used invitation token.",
             )
 
         inv_stmt = select(OrganizationInvitation).where(OrganizationInvitation.token_hash == token_hash)
@@ -502,6 +586,11 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered.")
 
         org = (await db.execute(select(Organization).where(Organization.id == inv.organization_id))).scalar_one()
+        if not org.is_active:
+            await db.rollback()
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization is no longer active.")
+
+        await cls._enable_auth_lookup(db, org_id=org.id)
         user = User(
             email=email_clean,
             password_hash=hash_password(password),

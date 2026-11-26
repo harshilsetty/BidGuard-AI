@@ -7,6 +7,7 @@ import {
 } from "./auth-store";
 import type {
   AIRecommendationResponse,
+  AuditLogListResponse,
   AuditRecordItem,
   AuditTrailResponse,
   Bidder,
@@ -18,11 +19,20 @@ import type {
   EvaluationDetailResponse,
   EvaluationRunRequest,
   EvaluationRunResponse,
+  InvitationCreateResponse,
+  InvitationValidateResponse,
   NvidiaHealth,
   OfficerBidderVerificationSummary,
   OfficerOverrideRequest,
   OfficerReviewQueueResponse,
   OfficerReviewRequest,
+  OrganizationInvitationItem,
+  OrganizationInvitationListResponse,
+  OrganizationMember,
+  OrganizationMemberListResponse,
+  OrganizationProfile,
+  OrganizationUpdateRequest,
+  RoleSummary,
   SourceVerificationResult,
   StatutoryAdapterInfo,
   StatutoryVerificationQuery,
@@ -31,6 +41,10 @@ import type {
   Tender,
   TenderBidderRankingResponse,
   TenderClause,
+  TenderDocument,
+  TenderDocumentPagesListResponse,
+  TenderDocumentRole,
+  TenderProcessingJob,
   TokenResponse,
   VerificationHistoryResponse,
 } from "./types";
@@ -74,17 +88,25 @@ function isAuthLifecyclePath(path: string): boolean {
  */
 export async function performTokenRefresh(): Promise<string | null> {
   return runSingleFlightRefresh(async () => {
-    const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
+    } catch {
+      return null;
+    }
 
     if (!res.ok) {
       return null;
     }
 
-    const data = (await res.json()) as TokenResponse;
+    const data = (await res.json().catch(() => null)) as TokenResponse | null;
+    if (!data || !data.access_token) {
+      return null;
+    }
     return {
       access_token: data.access_token,
       expires_in: data.expires_in,
@@ -119,12 +141,17 @@ export async function apiFetchResponse(
     }
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...fetchInit,
-    method,
-    headers,
-    credentials: "include",
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...fetchInit,
+      method,
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw new ApiError(0, "Network error: unable to reach the BidGuard API.");
+  }
 
   if (response.status === 401 && !skipAuth && !_retried && !isAuthLifecyclePath(path)) {
     const refreshedToken = await performTokenRefresh();
@@ -608,5 +635,280 @@ export async function fetchTenderReviewQueue(
     `/api/v1/tenders/${tenderId}/review-queue`,
     { cache: "no-store" },
     "Failed to fetch tender review queue"
+  );
+}
+
+// ====================================================
+// Phase 1.2 Organization, Membership & Invitation APIs
+// ====================================================
+
+export async function fetchMyOrganization(): Promise<OrganizationProfile> {
+  return apiFetch<OrganizationProfile>(
+    "/api/v1/organizations/me",
+    { cache: "no-store" },
+    "Failed to fetch organization profile"
+  );
+}
+
+export async function updateMyOrganization(
+  payload: OrganizationUpdateRequest
+): Promise<OrganizationProfile> {
+  return apiFetch<OrganizationProfile>(
+    "/api/v1/organizations/me",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    "Failed to update organization profile"
+  );
+}
+
+export async function fetchOrganizationRoles(): Promise<RoleSummary[]> {
+  return apiFetch<RoleSummary[]>(
+    "/api/v1/organizations/roles",
+    { cache: "no-store" },
+    "Failed to fetch organization roles"
+  );
+}
+
+export async function fetchOrganizationMembers(params?: {
+  q?: string;
+  role?: string;
+  isActive?: boolean | null;
+  limit?: number;
+  offset?: number;
+}): Promise<OrganizationMemberListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.q && params.q.trim()) qs.set("q", params.q.trim());
+  if (params?.role && params.role.trim()) qs.set("role", params.role.trim());
+  if (params?.isActive !== undefined && params.isActive !== null) {
+    qs.set("is_active", String(params.isActive));
+  }
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+
+  return apiFetch<OrganizationMemberListResponse>(
+    `/api/v1/organizations/me/members${suffix}`,
+    { cache: "no-store" },
+    "Failed to fetch organization members"
+  );
+}
+
+export async function updateMemberRole(
+  userId: string,
+  roleName: string
+): Promise<OrganizationMember> {
+  return apiFetch<OrganizationMember>(
+    `/api/v1/organizations/me/members/${encodeURIComponent(userId)}/role`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role_name: roleName }),
+    },
+    "Failed to update member role"
+  );
+}
+
+export async function updateMemberStatus(
+  userId: string,
+  isActive: boolean
+): Promise<OrganizationMember> {
+  return apiFetch<OrganizationMember>(
+    `/api/v1/organizations/me/members/${encodeURIComponent(userId)}/status`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_active: isActive }),
+    },
+    "Failed to update member status"
+  );
+}
+
+export async function removeOrganizationMember(userId: string): Promise<void> {
+  const res = await apiFetchResponse(
+    `/api/v1/organizations/me/members/${encodeURIComponent(userId)}`,
+    { method: "DELETE" }
+  );
+  if (!res.ok) {
+    const detail = await parseErrorDetail(res, `Failed to remove member: ${res.status}`);
+    throw new ApiError(res.status, detail);
+  }
+}
+
+export async function fetchOrganizationInvitations(params?: {
+  status?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<OrganizationInvitationListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.status && params.status.trim()) qs.set("status", params.status.trim());
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+
+  return apiFetch<OrganizationInvitationListResponse>(
+    `/api/v1/organizations/me/invitations${suffix}`,
+    { cache: "no-store" },
+    "Failed to fetch organization invitations"
+  );
+}
+
+export async function createOrganizationInvitation(
+  email: string,
+  roleName: string
+): Promise<InvitationCreateResponse> {
+  return apiFetch<InvitationCreateResponse>(
+    "/api/v1/auth/invitations",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim().toLowerCase(), role_name: roleName }),
+    },
+    "Failed to create invitation"
+  );
+}
+
+export async function revokeOrganizationInvitation(
+  invitationId: string
+): Promise<OrganizationInvitationItem> {
+  return apiFetch<OrganizationInvitationItem>(
+    `/api/v1/organizations/me/invitations/${encodeURIComponent(invitationId)}/revoke`,
+    { method: "POST" },
+    "Failed to revoke invitation"
+  );
+}
+
+export async function resendOrganizationInvitation(
+  invitationId: string
+): Promise<InvitationCreateResponse> {
+  return apiFetch<InvitationCreateResponse>(
+    `/api/v1/organizations/me/invitations/${encodeURIComponent(invitationId)}/resend`,
+    { method: "POST" },
+    "Failed to resend invitation"
+  );
+}
+
+export async function validateInvitationToken(
+  token: string
+): Promise<InvitationValidateResponse> {
+  return apiFetch<InvitationValidateResponse>(
+    `/api/v1/auth/invitations/validate?token=${encodeURIComponent(token)}`,
+    { cache: "no-store", skipAuth: true },
+    "Failed to validate invitation"
+  );
+}
+
+// ====================================================
+// Phase 1.3 Security & Compliance Audit Log APIs
+// ====================================================
+
+export async function fetchAuditLogs(params?: {
+  action?: string;
+  targetType?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<AuditLogListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.action && params.action.trim()) qs.set("action", params.action.trim());
+  if (params?.targetType && params.targetType.trim()) qs.set("target_type", params.targetType.trim());
+  if (params?.limit !== undefined) qs.set("limit", String(params.limit));
+  if (params?.offset !== undefined) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+
+  return apiFetch<AuditLogListResponse>(
+    `/api/v1/audit/logs${suffix}`,
+    { cache: "no-store" },
+    "Failed to fetch audit logs"
+  );
+}
+
+// ====================================================
+// Phase 2.0A Tender Multi-Document APIs
+// ====================================================
+
+export async function fetchTenderDocuments(tenderId: string): Promise<TenderDocument[]> {
+  return apiFetch<TenderDocument[]>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents`,
+    { cache: "no-store" },
+    "Failed to load tender documents"
+  );
+}
+
+export async function uploadTenderDocument(
+  tenderId: string,
+  file: File,
+  documentRole: TenderDocumentRole
+): Promise<TenderDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("document_role", documentRole);
+
+  return apiFetch<TenderDocument>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents`,
+    { method: "POST", body: formData },
+    "Failed to upload tender document"
+  );
+}
+
+export async function fetchTenderDocumentMetadata(
+  tenderId: string,
+  documentId: string
+): Promise<TenderDocument> {
+  return apiFetch<TenderDocument>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents/${encodeURIComponent(documentId)}`,
+    { cache: "no-store" },
+    "Failed to load document metadata"
+  );
+}
+
+// ====================================================
+// Phase 2.0B Asynchronous Document Processing APIs
+// ====================================================
+
+export async function processTenderDocument(
+  tenderId: string,
+  documentId: string
+): Promise<TenderProcessingJob> {
+  return apiFetch<TenderProcessingJob>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents/${encodeURIComponent(documentId)}/process`,
+    { method: "POST" },
+    "Failed to enqueue document processing"
+  );
+}
+
+export async function fetchTenderJobStatus(
+  tenderId: string,
+  jobId: string
+): Promise<TenderProcessingJob> {
+  return apiFetch<TenderProcessingJob>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/jobs/${encodeURIComponent(jobId)}`,
+    { cache: "no-store" },
+    "Failed to load job status"
+  );
+}
+
+export async function retryTenderJob(
+  tenderId: string,
+  jobId: string
+): Promise<TenderProcessingJob> {
+  return apiFetch<TenderProcessingJob>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/jobs/${encodeURIComponent(jobId)}/retry`,
+    { method: "POST" },
+    "Failed to retry processing job"
+  );
+}
+
+export async function fetchTenderDocumentPages(
+  tenderId: string,
+  documentId: string,
+  limit = 20,
+  offset = 0
+): Promise<TenderDocumentPagesListResponse> {
+  return apiFetch<TenderDocumentPagesListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/documents/${encodeURIComponent(documentId)}/pages?limit=${limit}&offset=${offset}`,
+    { cache: "no-store" },
+    "Failed to load extracted pages"
   );
 }

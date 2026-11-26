@@ -33,7 +33,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (publicRoute && status === "authenticated") {
+    if (pathname.startsWith("/login") && status === "authenticated") {
       const nextParam = sanitizeRedirectPath(searchParams?.get("next"));
       router.replace(nextParam);
     }
@@ -79,7 +79,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (publicRoute && status === "authenticated") {
+  if (pathname.startsWith("/login") && status === "authenticated") {
     return null;
   }
 
