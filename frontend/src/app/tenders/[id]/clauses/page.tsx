@@ -13,6 +13,7 @@ import { Tender, TenderClause, ClauseCreateInput } from "@/lib/types";
 import { TenderDocumentsPanel } from "@/components/TenderDocumentsPanel";
 import { TenderRequirementsPanel } from "@/components/TenderRequirementsPanel";
 import { TenderConflictsPanel } from "@/components/TenderConflictsPanel";
+import { TenderReviewWorkspace } from "@/components/TenderReviewWorkspace";
 import {
   CheckCircle2,
   AlertCircle,
@@ -269,6 +270,9 @@ export default function TenderClausesPage({
 
       {/* Phase 2.0D Cross-Document Conflict Detection */}
       <TenderConflictsPanel tenderId={tenderId} />
+
+      {/* Phase 2.0E Human Review & Decision Workspace */}
+      <TenderReviewWorkspace tenderId={tenderId} />
 
       {successMsg && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-3 text-[#28A745] text-sm">

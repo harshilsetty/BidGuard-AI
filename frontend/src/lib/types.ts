@@ -950,3 +950,78 @@ export interface TenderRequirementEvidenceListResponse {
   total: number;
   items: TenderRequirementEvidence[];
 }
+
+// ====================================================
+// Phase 2.0E Human Review & Decision Workflow Types
+// ====================================================
+
+export type ReviewObjectType = "REQUIREMENT" | "CONFLICT" | "EVIDENCE";
+export type ReviewDecisionType =
+  | "CONFIRM"
+  | "REJECT"
+  | "REQUEST_CLARIFICATION"
+  | "DISMISS"
+  | "RESOLVE"
+  | "REOPEN"
+  | "ASSIGN";
+
+export interface ReviewDecisionRecord {
+  id: string;
+  organization_id?: string | null;
+  tender_id: string;
+  object_type: ReviewObjectType;
+  object_id: string;
+  reviewer_user_id?: string | null;
+  decision_type: ReviewDecisionType;
+  previous_status: string;
+  new_status: string;
+  rationale: string;
+  object_version: number;
+  source_document_sha256?: string | null;
+  assigned_to_user_id?: string | null;
+  created_at: string;
+}
+
+export interface ReviewQueueItem {
+  object_type: ReviewObjectType;
+  object_id: string;
+  tender_id: string;
+  title: string;
+  summary: string;
+  status: string;
+  review_version: number;
+  assigned_reviewer_id?: string | null;
+  primary_category?: string | null;
+  provenance_status?: string | null;
+  severity?: string | null;
+  source_document_id?: string | null;
+  source_page_number?: number | null;
+  updated_at: string;
+}
+
+export interface ReviewQueueListResponse {
+  tender_id: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: ReviewQueueItem[];
+}
+
+export interface ReviewDecisionHistoryListResponse {
+  tender_id: string;
+  total: number;
+  limit: number;
+  offset: number;
+  items: ReviewDecisionRecord[];
+}
+
+export interface ReviewWorkloadSummary {
+  tender_id: string;
+  pending_count: number;
+  confirmed_count: number;
+  rejected_count: number;
+  needs_clarification_count: number;
+  conflict_count: number;
+  evidence_count: number;
+  unassigned_count: number;
+}

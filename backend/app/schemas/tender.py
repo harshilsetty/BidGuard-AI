@@ -157,6 +157,9 @@ class TenderRequirementResponse(BaseModel):
     model_version: Optional[str] = None
     extraction_confidence: float
     review_status: str
+    provenance_status: str = "UNVERIFIED"
+    review_version: int = 1
+    assigned_reviewer_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -218,6 +221,8 @@ class TenderRequirementConflictResponse(BaseModel):
     status: str
     scope_summary: Optional[str] = None
     explanation: str
+    review_version: int = 1
+    assigned_reviewer_id: Optional[UUID] = None
     reviewed_by_user_id: Optional[UUID] = None
     reviewed_at: Optional[datetime] = None
     created_at: datetime
@@ -258,6 +263,8 @@ class TenderRequirementEvidenceResponse(BaseModel):
     mapping_method: str
     confidence: float
     mapping_status: str
+    review_version: int = 1
+    assigned_reviewer_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
@@ -270,3 +277,97 @@ class TenderRequirementEvidenceListResponse(BaseModel):
     requirement_id: UUID
     total: int
     items: List[TenderRequirementEvidenceResponse]
+
+
+# ==============================================================================
+# Phase 2.0E: Human Review & Decision Workflow Schemas
+# ==============================================================================
+
+
+class ReviewDecisionRequest(BaseModel):
+    object_type: Literal["REQUIREMENT", "CONFLICT", "EVIDENCE"]
+    object_id: UUID
+    decision_type: Literal["CONFIRM", "REJECT", "REQUEST_CLARIFICATION", "DISMISS", "RESOLVE", "REOPEN"]
+    expected_version: int = Field(..., ge=1)
+    rationale: Optional[str] = Field(None, max_length=2000)
+
+
+class ReviewAssignRequest(BaseModel):
+    object_type: Literal["REQUIREMENT", "CONFLICT", "EVIDENCE"]
+    object_id: UUID
+    assignee_user_id: Optional[UUID] = None
+    expected_version: int = Field(..., ge=1)
+    rationale: Optional[str] = Field(None, max_length=2000)
+
+
+class ReviewDecisionResponse(BaseModel):
+    id: UUID
+    organization_id: Optional[UUID] = None
+    tender_id: UUID
+    object_type: str
+    object_id: UUID
+    reviewer_user_id: Optional[UUID] = None
+    decision_type: str
+    previous_status: str
+    new_status: str
+    rationale: str
+    object_version: int
+    source_document_sha256: Optional[str] = None
+    assigned_to_user_id: Optional[UUID] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReviewDecisionMutationResponse(BaseModel):
+    object_type: str
+    object_id: UUID
+    new_status: str
+    review_version: int
+    assigned_reviewer_id: Optional[UUID] = None
+    decision: ReviewDecisionResponse
+
+
+class ReviewQueueItemResponse(BaseModel):
+    object_type: str
+    object_id: UUID
+    tender_id: UUID
+    title: str
+    summary: str
+    status: str
+    review_version: int
+    assigned_reviewer_id: Optional[UUID] = None
+    primary_category: Optional[str] = None
+    provenance_status: Optional[str] = None
+    severity: Optional[str] = None
+    source_document_id: Optional[UUID] = None
+    source_page_number: Optional[int] = None
+    updated_at: datetime
+
+
+class ReviewQueueListResponse(BaseModel):
+    tender_id: UUID
+    total: int
+    limit: int
+    offset: int
+    items: List[ReviewQueueItemResponse]
+
+
+class ReviewDecisionHistoryListResponse(BaseModel):
+    tender_id: UUID
+    total: int
+    limit: int
+    offset: int
+    items: List[ReviewDecisionResponse]
+
+
+class ReviewWorkloadSummaryResponse(BaseModel):
+    tender_id: UUID
+    pending_count: int
+    confirmed_count: int
+    rejected_count: int
+    needs_clarification_count: int
+    conflict_count: int
+    evidence_count: int
+    unassigned_count: int

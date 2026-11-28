@@ -153,16 +153,28 @@ class TenderRequirementEvidenceService:
                 matched_types.add(ev_type)
                 ex = existing_by_type.get(ev_type)
                 if ex:
-                    # Preserve human CONFIRMED or REJECTED mappings
-                    if ex.mapping_status in ("CONFIRMED", "REJECTED"):
+                    # Preserve human CONFIRMED/REJECTED mappings ONLY when requirement passage is unchanged
+                    source_stale = (ex.source_passage or "").strip() != source_passage
+                    if ex.mapping_status in ("CONFIRMED", "REJECTED") and not source_stale:
                         results.append(ex)
                         continue
+                    if ex.mapping_status in ("CONFIRMED", "REJECTED") and source_stale:
+                        from app.services.review_service import TenderReviewService
+
+                        await TenderReviewService.invalidate_for_source_change(
+                            db=db,
+                            tender_id=tender_id,
+                            requirement_ids=[req.id],
+                            previous_sha256=req.source_document_sha256,
+                            current_sha256=None,
+                            reason="Requirement source or passage changed; evidence mapping requires renewed human review.",
+                        )
                     ex.expected_document_name = doc_name
                     ex.evidence_purpose = purpose
                     ex.is_mandatory = is_mandatory
                     ex.source_passage = source_passage
                     ex.confidence = base_conf
-                    ex.mapping_status = base_status
+                    ex.mapping_status = "NEEDS_REVIEW" if source_stale else base_status
                     results.append(ex)
                 else:
                     rec = TenderRequirementEvidence(

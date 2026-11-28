@@ -1023,3 +1023,95 @@ export async function generateRequirementEvidenceMappings(
     "Failed to generate evidence mappings"
   );
 }
+
+// ====================================================
+// Phase 2.0E Human Review & Decision Workflow APIs
+// ====================================================
+
+export async function fetchTenderLensReviewQueue(
+  tenderId: string,
+  params?: { object_type?: string; status?: string; limit?: number; offset?: number }
+): Promise<import("./types").ReviewQueueListResponse> {
+  const qs = new URLSearchParams();
+  if (params?.object_type) qs.set("object_type", params.object_type);
+  if (params?.status) qs.set("status", params.status);
+  qs.set("limit", String(params?.limit ?? 50));
+  qs.set("offset", String(params?.offset ?? 0));
+  return apiFetch<import("./types").ReviewQueueListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/tenderlens-review-queue?${qs.toString()}`,
+    { cache: "no-store" },
+    "Failed to load review queue"
+  );
+}
+
+export async function assignTenderReviewer(
+  tenderId: string,
+  payload: {
+    object_type: import("./types").ReviewObjectType;
+    object_id: string;
+    assignee_user_id: string | null;
+    expected_version: number;
+    rationale?: string;
+  }
+): Promise<{
+  new_status: string;
+  review_version: number;
+  assigned_reviewer_id: string | null;
+  decision: import("./types").ReviewDecisionRecord;
+}> {
+  return apiFetch(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/review-assignments`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    "Failed to assign reviewer"
+  );
+}
+
+export async function fetchTenderReviewWorkload(
+  tenderId: string
+): Promise<import("./types").ReviewWorkloadSummary> {
+  return apiFetch<import("./types").ReviewWorkloadSummary>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/review-workload`,
+    { cache: "no-store" },
+    "Failed to load review workload"
+  );
+}
+
+export async function submitTenderReviewDecision(
+  tenderId: string,
+  payload: {
+    object_type: import("./types").ReviewObjectType;
+    object_id: string;
+    decision_type: Exclude<import("./types").ReviewDecisionType, "ASSIGN">;
+    expected_version: number;
+    rationale?: string;
+  }
+): Promise<{ new_status: string; review_version: number; decision: import("./types").ReviewDecisionRecord }> {
+  return apiFetch(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/review-decisions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+    "Failed to submit review decision"
+  );
+}
+
+export async function fetchTenderReviewHistory(
+  tenderId: string,
+  objectType?: string,
+  objectId?: string
+): Promise<import("./types").ReviewDecisionHistoryListResponse> {
+  const qs = new URLSearchParams();
+  if (objectType) qs.set("object_type", objectType);
+  if (objectId) qs.set("object_id", objectId);
+  return apiFetch<import("./types").ReviewDecisionHistoryListResponse>(
+    `/api/v1/tenders/${encodeURIComponent(tenderId)}/review-history?${qs.toString()}`,
+    { cache: "no-store" },
+    "Failed to load decision history"
+  );
+}

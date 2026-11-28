@@ -467,6 +467,27 @@ async def execute_claimed_job(
                     retryable=False,
                 )
 
+            def _verify_stored_doc_hash_sync(path_str: str, recorded_sha: str) -> str:
+                p = Path(path_str)
+                if p.exists() and p.is_file():
+                    h = hashlib.sha256()
+                    with open(p, "rb") as f:
+                        for chunk in iter(lambda: f.read(65536), b""):
+                            h.update(chunk)
+                    actual = h.hexdigest()
+                    if actual != recorded_sha:
+                        raise JobProcessingError(
+                            "SOURCE_CHANGED_DURING_EXTRACTION",
+                            "Stored document SHA-256 does not match database record; aborting stale extraction.",
+                            retryable=False,
+                        )
+                    return actual
+                return recorded_sha
+
+            extraction_sha256 = await asyncio.to_thread(
+                _verify_stored_doc_hash_sync, storage_path_str, expected_sha256
+            )
+
             async with AsyncSessionLocal() as db:
                 await set_worker_rls_context(db, organization_id=org_id, is_super_admin=org_id is None)
                 page_rows = (
@@ -513,8 +534,22 @@ async def execute_claimed_job(
             if ownership_lost_event.is_set():
                 return "OWNERSHIP_LOST"
 
+            # Re-verify stored file hash before publishing extracted requirements
+            await asyncio.to_thread(_verify_stored_doc_hash_sync, storage_path_str, extraction_sha256)
+
             async with AsyncSessionLocal() as db:
                 await set_worker_rls_context(db, organization_id=org_id, is_super_admin=org_id is None)
+                current_doc = (
+                    await db.execute(select(TenderDocument).where(TenderDocument.id == doc_id))
+                ).scalar_one_or_none()
+                if not current_doc or current_doc.sha256_hash != extraction_sha256:
+                    await db.rollback()
+                    raise JobProcessingError(
+                        "SOURCE_CHANGED_DURING_EXTRACTION",
+                        "Document SHA-256 changed during extraction; refusing to publish stale requirements.",
+                        retryable=False,
+                    )
+
                 now = datetime.now(timezone.utc)
                 res = await db.execute(
                     update(TenderProcessingJob)
@@ -543,6 +578,31 @@ async def execute_claimed_job(
                     )
                     return "OWNERSHIP_LOST"
 
+                # Invalidate any previously reviewed requirements from an older source hash
+                stale_reviewed = (
+                    await db.execute(
+                        select(TenderRequirement).where(
+                            TenderRequirement.source_document_id == doc_id,
+                            TenderRequirement.source_document_sha256.is_not(None),
+                            TenderRequirement.source_document_sha256 != extraction_sha256,
+                        )
+                    )
+                ).scalars().all()
+                if stale_reviewed:
+                    from app.services.review_service import TenderReviewService
+
+                    prev_sha = stale_reviewed[0].source_document_sha256
+                    for sr in stale_reviewed:
+                        sr.provenance_status = "SOURCE_CHANGED"
+                    await db.flush()
+                    await TenderReviewService.invalidate_for_source_change(
+                        db=db,
+                        tender_id=job_tender_id,
+                        requirement_ids=[sr.id for sr in stale_reviewed],
+                        previous_sha256=prev_sha,
+                        current_sha256=extraction_sha256,
+                    )
+
                 # Never overwrite CONFIRMED or REJECTED requirements
                 await db.execute(
                     delete(TenderRequirement).where(
@@ -552,13 +612,15 @@ async def execute_claimed_job(
                     )
                 )
                 for req in extracted_reqs:
+                    req_payload = dict(req)
+                    req_payload.setdefault("source_document_sha256", extraction_sha256)
                     db.add(
                         TenderRequirement(
                             tender_id=job_tender_id,
                             source_document_id=doc_id,
                             processing_job_id=job_id,
                             extraction_version=job_extraction_version,
-                            **req,
+                            **req_payload,
                         )
                     )
                 await db.commit()

@@ -140,10 +140,21 @@ class TenderRequirementProvenanceService:
         )
 
         if persist_status and req.provenance_status != status_val:
+            prev_sha = req.source_document_sha256
             req.provenance_status = status_val
             if doc and not req.source_document_sha256:
                 req.source_document_sha256 = doc.sha256_hash
             await db.flush()
+            if status_val == "SOURCE_CHANGED":
+                from app.services.review_service import TenderReviewService
+
+                await TenderReviewService.invalidate_for_source_change(
+                    db=db,
+                    tender_id=tender_id,
+                    requirement_ids=[req.id],
+                    previous_sha256=prev_sha,
+                    current_sha256=doc.sha256_hash if doc else None,
+                )
 
         extra_sources = (
             await db.execute(

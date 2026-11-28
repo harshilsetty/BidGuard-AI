@@ -212,6 +212,10 @@ class TenderRequirement(Base, BaseModelMixin):
     # VERIFIED, PARTIALLY_VERIFIED, UNVERIFIED, SOURCE_NOT_FOUND, SOURCE_CHANGED, NEEDS_REVIEW
     provenance_status = Column(String(32), default="UNVERIFIED", nullable=False, index=True)
     source_document_sha256 = Column(String(64), nullable=True)
+    review_version = Column(Integer, default=1, nullable=False)
+    assigned_reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    last_reviewed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    last_reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class TenderRequirementSource(Base, BaseModelMixin):
@@ -279,6 +283,8 @@ class TenderRequirementConflict(Base, BaseModelMixin):
     status = Column(String(24), default="DETECTED", nullable=False, index=True)
     scope_summary = Column(String(255), nullable=True)
     explanation = Column(Text, nullable=False)
+    review_version = Column(Integer, default=1, nullable=False)
+    assigned_reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     reviewed_by_user_id = Column(UUID(as_uuid=True), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -308,3 +314,42 @@ class TenderRequirementEvidence(Base, BaseModelMixin):
     confidence = Column(Float, default=0.75, nullable=False)
     # SUGGESTED, NEEDS_REVIEW, CONFIRMED, REJECTED
     mapping_status = Column(String(24), default="SUGGESTED", nullable=False, index=True)
+    review_version = Column(Integer, default=1, nullable=False)
+    assigned_reviewer_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    reviewed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ReviewDecision(Base, BaseModelMixin):
+    """Append-only, immutable human review decision history across requirements, conflicts, and evidence."""
+    __tablename__ = "review_decisions"
+
+    organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    tender_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    # REQUIREMENT, CONFLICT, EVIDENCE
+    object_type = Column(String(32), nullable=False, index=True)
+    object_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    reviewer_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # CONFIRM, REJECT, REQUEST_CLARIFICATION, DISMISS, RESOLVE, REOPEN, ASSIGN
+    decision_type = Column(String(32), nullable=False, index=True)
+    previous_status = Column(String(32), nullable=False)
+    new_status = Column(String(32), nullable=False)
+    rationale = Column(Text, nullable=False)
+    object_version = Column(Integer, nullable=False)
+    source_document_sha256 = Column(String(64), nullable=True)
+    assigned_to_user_id = Column(UUID(as_uuid=True), nullable=True)

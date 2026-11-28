@@ -13,6 +13,7 @@ from app.models.tender import (
     TenderRequirementSource,
     TenderRequirementConflict,
     TenderRequirementEvidence,
+    ReviewDecision,
 )
 from app.models.clause import TenderClause
 from app.models.bidder import Bidder, BidDocument

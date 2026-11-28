@@ -232,8 +232,30 @@ class TenderRequirementConflictService:
 
                     existing_row = existing_pairs.get(pair_key)
                     if existing_row:
-                        # Preserve human-reviewed statuses (CONFIRMED, DISMISSED, RESOLVED)
-                        if existing_row.status in ("CONFIRMED", "DISMISSED", "RESOLVED"):
+                        # Preserve human-reviewed statuses unless underlying requirement text/values changed
+                        conflict_material_changed = (
+                            existing_row.explanation != explanation
+                            or existing_row.conflict_type != conflict_type
+                        )
+                        if existing_row.status in ("CONFIRMED", "DISMISSED", "RESOLVED") and not conflict_material_changed:
+                            created_or_updated.append(existing_row)
+                            continue
+                        if existing_row.status in ("CONFIRMED", "DISMISSED", "RESOLVED") and conflict_material_changed:
+                            from app.services.review_service import TenderReviewService
+
+                            await TenderReviewService.invalidate_for_source_change(
+                                db=db,
+                                tender_id=tender_id,
+                                requirement_ids=[ra.id, rb.id],
+                                previous_sha256=ra.source_document_sha256,
+                                current_sha256=rb.source_document_sha256,
+                                reason="Underlying requirement changed; conflict assessment requires renewed human review.",
+                            )
+                            existing_row.conflict_type = conflict_type
+                            existing_row.relationship_type = rel_type
+                            existing_row.severity = severity
+                            existing_row.scope_summary = scope_summary
+                            existing_row.explanation = explanation
                             created_or_updated.append(existing_row)
                             continue
                         existing_row.conflict_type = conflict_type

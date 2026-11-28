@@ -27,6 +27,7 @@ from app.models.tender import (
     TenderRequirementSource,
     TenderRequirementConflict,
     TenderRequirementEvidence,
+    ReviewDecision,
 )
 from app.models.clause import TenderClause
 from app.schemas.tender import (
@@ -47,10 +48,19 @@ from app.schemas.tender import (
     ConflictDetectionRunResponse,
     TenderRequirementEvidenceResponse,
     TenderRequirementEvidenceListResponse,
+    ReviewDecisionRequest,
+    ReviewAssignRequest,
+    ReviewDecisionResponse,
+    ReviewDecisionMutationResponse,
+    ReviewQueueItemResponse,
+    ReviewQueueListResponse,
+    ReviewDecisionHistoryListResponse,
+    ReviewWorkloadSummaryResponse,
 )
 from app.services.requirement_provenance_service import TenderRequirementProvenanceService
 from app.services.requirement_conflict_service import TenderRequirementConflictService
 from app.services.requirement_evidence_service import TenderRequirementEvidenceService
+from app.services.review_service import TenderReviewService
 from app.schemas.clause import (
     ClauseResponse,
     ClauseCreateRequest,
@@ -1270,4 +1280,158 @@ async def generate_requirement_evidence_mappings(
         requirement_id=requirement_id,
         total=len(rows),
         items=[TenderRequirementEvidenceResponse.model_validate(r) for r in rows],
+    )
+
+
+# ==============================================================================
+# Phase 2.0E: Human Review & Decision Workflows
+# ==============================================================================
+
+
+@router.get("/{tender_id}/tenderlens-review-queue", response_model=ReviewQueueListResponse)
+async def list_tender_review_queue(
+    tender_id: UUID,
+    object_type: Optional[str] = Query(None),
+    review_status: Optional[str] = Query(None, alias="status"),
+    primary_category: Optional[str] = Query(None),
+    provenance_status: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    assigned_reviewer_id: Optional[UUID] = Query(None),
+    unassigned_only: bool = Query(False),
+    source_document_id: Optional[UUID] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("audit:read")),
+):
+    """Consolidated review queue across requirements, conflicts, and evidence mappings."""
+    await get_authorized_tender(tender_id, current_user, db)
+    total, items = await TenderReviewService.list_review_queue(
+        db=db,
+        tender_id=tender_id,
+        object_type=object_type,
+        review_status=review_status,
+        primary_category=primary_category,
+        provenance_status=provenance_status,
+        severity=severity,
+        assigned_reviewer_id=assigned_reviewer_id,
+        unassigned_only=unassigned_only,
+        source_document_id=source_document_id,
+        limit=limit,
+        offset=offset,
+    )
+    return ReviewQueueListResponse(
+        tender_id=tender_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[ReviewQueueItemResponse(**it) for it in items],
+    )
+
+
+@router.get("/{tender_id}/review-workload", response_model=ReviewWorkloadSummaryResponse)
+async def get_tender_review_workload(
+    tender_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("audit:read")),
+):
+    """Retrieve review workload counts across requirements, conflicts, and evidence mappings."""
+    await get_authorized_tender(tender_id, current_user, db)
+    summary = await TenderReviewService.get_workload_summary(db, tender_id)
+    return ReviewWorkloadSummaryResponse(**summary)
+
+
+@router.post("/{tender_id}/review-decisions", response_model=ReviewDecisionMutationResponse)
+async def submit_tender_review_decision(
+    tender_id: UUID,
+    payload: ReviewDecisionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("evaluation:override")),
+):
+    """Submit a human review decision or reopen a previously reviewed item with optimistic concurrency."""
+    tender = await get_authorized_tender(tender_id, current_user, db)
+    updated_obj, decision = await TenderReviewService.submit_decision(
+        db=db,
+        tender=tender,
+        actor=current_user,
+        object_type=payload.object_type,
+        object_id=payload.object_id,
+        decision_type=payload.decision_type,
+        expected_version=payload.expected_version,
+        rationale=payload.rationale,
+    )
+    return ReviewDecisionMutationResponse(
+        object_type=decision.object_type,
+        object_id=decision.object_id,
+        new_status=decision.new_status,
+        review_version=updated_obj.review_version,
+        assigned_reviewer_id=updated_obj.assigned_reviewer_id,
+        decision=ReviewDecisionResponse.model_validate(decision),
+    )
+
+
+@router.post("/{tender_id}/review-assignments", response_model=ReviewDecisionMutationResponse)
+async def assign_tender_reviewer(
+    tender_id: UUID,
+    payload: ReviewAssignRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("user:manage")),
+):
+    """Assign or reassign a reviewable item to an active organization reviewer."""
+    tender = await get_authorized_tender(tender_id, current_user, db)
+    updated_obj, decision = await TenderReviewService.assign_reviewer(
+        db=db,
+        tender=tender,
+        actor=current_user,
+        object_type=payload.object_type,
+        object_id=payload.object_id,
+        assignee_user_id=payload.assignee_user_id,
+        expected_version=payload.expected_version,
+        rationale=payload.rationale,
+    )
+    return ReviewDecisionMutationResponse(
+        object_type=decision.object_type,
+        object_id=decision.object_id,
+        new_status=decision.new_status,
+        review_version=updated_obj.review_version,
+        assigned_reviewer_id=updated_obj.assigned_reviewer_id,
+        decision=ReviewDecisionResponse.model_validate(decision),
+    )
+
+
+@router.get("/{tender_id}/review-history", response_model=ReviewDecisionHistoryListResponse)
+async def list_tender_review_history(
+    tender_id: UUID,
+    object_type: Optional[str] = Query(None),
+    object_id: Optional[UUID] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("audit:read")),
+):
+    """Retrieve append-only human review decision history for a tender or specific review item."""
+    await get_authorized_tender(tender_id, current_user, db)
+    conditions = [ReviewDecision.tender_id == tender_id]
+    if object_type:
+        conditions.append(ReviewDecision.object_type == object_type.strip().upper())
+    if object_id:
+        conditions.append(ReviewDecision.object_id == object_id)
+
+    total = (await db.execute(select(func.count(ReviewDecision.id)).where(*conditions))).scalar() or 0
+    rows = (
+        await db.execute(
+            select(ReviewDecision)
+            .where(*conditions)
+            .order_by(ReviewDecision.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).scalars().all()
+
+    return ReviewDecisionHistoryListResponse(
+        tender_id=tender_id,
+        total=total,
+        limit=limit,
+        offset=offset,
+        items=[ReviewDecisionResponse.model_validate(r) for r in rows],
     )
